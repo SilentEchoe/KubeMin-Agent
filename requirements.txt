@@ -1,3 +1,6 @@
 fastapi
+langchain
+pydantic-settings
+python-dotenv
 sentence-transformers
 uvicorn[standard]

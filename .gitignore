@@ -1,4 +1,69 @@
-.DS_Store
-.tmp_pdf/
-.tmp_pdfdeps/
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+*.egg-info/
+.installed.cfg
+*.egg
 
+# Virtual environments / conda
+.env
+.env.*
+.venv/
+venv/
+ENV/
+env/
+.conda/
+conda-bld/
+*.conda
+*.lock
+.python-version
+
+# Unit test / coverage
+.coverage
+.coverage.*
+.cache/
+.pytest_cache/
+htmlcov/
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+
+# Lint / type
+.mypy_cache/
+.ruff_cache/
+.pytype/
+.pyre/
+.pyright/
+dmypy.json
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# FastAPI / uvicorn
+*.pid
