@@ -1,0 +1,10 @@
+name: kubemin-agent
+channels:
+  - conda-forge
+dependencies:
+  - python=3.12
+  - pip
+  - pip:
+      - fastapi
+      - sentence-transformers
+      - uvicorn[standard]
