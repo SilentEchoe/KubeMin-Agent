@@ -1,50 +1,150 @@
-# KubeMin-Agent
+# KubeMin-Agent (CLI) - Enterprise Production Grade
 
-KubeMin-Agent 是一个基于 LangChain 框架所编写的一系列 Agent 服务，主要分为三个服务模块：
+> **Production Grade Read-Only Diagnostic Agent**  
+> Part of the KubeMin ecosystem. Designed for "Observability, Revivability, Evaluability, Governability, and Evolvability".
 
-1. 自动化测试：通过控制浏览器控制页面，以自动化完成一系列点击事件，达成黑盒测试的目的
-2. 构建安全沙箱：构建一个安全的沙箱环境，进行自动化测试
-3. API 工具调用：通过调用 API 工具（调用 KubeMin-Cli）服务来构建生产级别的工作流
+KubeMin-Agent is a CLI-first intelligent agent designed to diagnose Kubernetes applications within a strictly controlled information domain. It leverages the KubeMin-Cli API to safely retrieve pods, logs, and metrics, preventing direct uncontrolled access to the cluster.
 
-## 项目结构
+---
+
+## 0. Scope & Non-Goals
+
+### Scope (Phase 1: Read-Only)
+- **Form Factor**: CLI (`kubemin-agent`)
+- **Data Source**: Strictly via **KubeMin-Cli / KubeMin API** (No direct K8s access).
+- **Core Evidence**: Pod Summaries, Logs, Prometheus Metrics.
+- **Output**: Structured JSON Reports + Human-friendly summaries.
+
+### Non-Goals
+- No write operations (scaling, restarting, patching).
+- No multi-agent collaboration (v1).
+- No interactive confirmation loops (autonomy within strict read-only bounds).
+
+---
+
+## 1. Top Use Cases
+
+1. **App Instability**: Diagnosing CrashLoopBackOff, OOMKilled, Liveness probe failures.
+2. **Performance Degradation**: CPU/Memory throttling, latency spikes.
+3. **Post-Release Failure**: Correlating events, logs, and metrics to identify root causes.
+4. **Audit & Replay**: every diagnosis has a `run_id` and full evidence chain.
+
+---
+
+## 2. Architecture
+
+The agent follows a strict **Plan -> Execute -> Verify -> Report** state machine architecture.
 
 ```
-app/
-  api/            # FastAPI 路由与版本管理
-  agents/         # LangChain Agent 抽象与实现
-  chains/         # LangChain Chain 构建
-  core/           # 配置、日志等核心模块
-  middlewares/    # 中间件（请求追踪等）
-  schemas/        # 请求/响应数据模型
-  services/       # 业务服务层
+┌─────────────────────────────┐
+│ CLI (Typer/Rich)            │  Input/Output
+└──────────────┬──────────────┘
+               │
+┌──────────────▼──────────────┐
+│ Orchestrator (State Machine) │  Core Logic
+│ - budget / retry / timeout   │  Safety rails
+│ - run_store / replay         │  Audit trail
+└──────────────┬──────────────┘
+               │
+┌──────────────▼──────────────┐
+│ Tool Runtime (Allowlist)     │  Safe Execution
+│ - kubemin: pods/logs/prom    │  API Proxy
+└──────────────┬──────────────┘
+               │
+┌──────────────▼──────────────┐
+│ Model Gateway (LLM)          │  Intelligence
+│ - schema-enforced outputs    │  Strict JSON
+└──────────────┬──────────────┘
 ```
 
-## Miniconda 环境配置
+## 3. Getting Started
 
-使用 Miniconda 创建并激活本项目的开发环境：
+### Prerequisites
+- Python 3.10+
+- KubeMin-Cli configured and running.
+
+### Installation
 
 ```bash
-conda env create -f environment.yml
-conda activate kubemin-agent
+pip install -r requirements.txt
+# or via pipx
+# pipx install .
 ```
 
-可选：创建本地环境变量文件
+### Usage
+
+**Diagnose an Application:**
+```bash
+python cli.py inspect --app my-app-id -n default "Why is it restarting?"
+```
+
+**Replay a Past Run:**
+```bash
+python cli.py replay --run <run_uuid>
+```
+
+---
+
+## 4. Directory Structure
+
+```
+.
+├── cli.py                  # Entrypoint
+├── config.py               # Configuration & Env Vars
+├── runtime/                # Core Logic
+│   ├── orchestrator.py
+│   ├── run_store.py
+│   └── budget.py
+├── tools/                  # Safe Tool Definitions
+│   ├── base.py
+│   └── kubemin_api.py
+├── model/                  # LLM Integration
+│   ├── gateway.py
+│   └── schemas.py
+└── eval/                   # QA & Testing
+    └── runner.py
+```
+
+## 5. Nanobot-style General Agent (New)
+
+This repository now includes a general-purpose chat agent inspired by nanobot:
+
+- Tool-calling loop (LLM -> tools -> LLM)
+- Built-in tools: `read_file`, `write_file`, `list_dir`, `exec`
+- Session persistence: `~/.kubemin-agent/sessions`
+- Workspace safety guard for file and shell operations
+
+### Quick start
+
+1. Install dependencies:
 
 ```bash
-cp .env.example .env
+pip install -r requirements.txt
 ```
 
-启动服务：
+2. Configure API key (either one):
 
 ```bash
-uvicorn app.main:app --reload
+export KUBEMIN_AGENT_API_KEY="your_api_key"
+# or
+export OPENAI_API_KEY="your_api_key"
 ```
 
-示例请求：
+3. Run one-shot message:
 
 ```bash
-curl http://127.0.0.1:8000/api/v1/healthz
-curl -X POST http://127.0.0.1:8000/api/v1/agents/run \\
-  -H 'Content-Type: application/json' \\
-  -d '{\"query\":\"hello\"}'
+python cli.py agent -m "List files in my workspace"
 ```
+
+4. Run interactive mode:
+
+```bash
+python cli.py agent
+```
+
+### Config notes
+
+- Workspace path: `KUBEMIN_AGENT_WORKSPACE` (default `~/.kubemin-agent/workspace`)
+- Model: `KUBEMIN_AGENT_MODEL` (default `gpt-4o-mini`)
+- API base: `KUBEMIN_AGENT_API_BASE` (default `https://api.openai.com/v1`)
+- Safety: `KUBEMIN_AGENT_RESTRICT_WORKSPACE=true` keeps tools in workspace only

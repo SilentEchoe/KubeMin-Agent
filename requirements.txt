@@ -1,6 +1,6 @@
-fastapi
-langchain
+typer
+rich
+pydantic
 pydantic-settings
-python-dotenv
-sentence-transformers
-uvicorn[standard]
+httpx
+pytest
