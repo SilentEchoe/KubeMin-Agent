@@ -49,7 +49,7 @@ flowchart LR
 
 ```
 kubemin_agent/
-├── agent/              # 🧠 核心 Agent 逻辑
+├── agent/              # 核心 Agent 逻辑
 │   ├── loop.py         #    Agent 循环（LLM ↔ 工具执行）
 │   ├── context.py      #    上下文装配器
 │   ├── memory.py       #    持久记忆
@@ -64,30 +64,30 @@ kubemin_agent/
 │       ├── message.py  #    消息发送工具
 │       ├── spawn.py    #    子任务工具
 │       └── kubectl.py  #    K8s 资源查询工具（新增）
-├── providers/          # 🤖 LLM Provider 抽象
+├── providers/          # LLM Provider 抽象
 │   ├── base.py         #    LLMProvider / LLMResponse / ToolCallRequest
 │   └── litellm_provider.py  # LiteLLM 统一网关
-├── bus/                # 🚌 消息路由
+├── bus/                # 消息路由
 │   ├── events.py       #    InboundMessage / OutboundMessage
 │   └── queue.py        #    MessageBus 异步队列
-├── channels/           # 📱 通道接入
+├── channels/           # 通道接入
 │   ├── base.py         #    BaseChannel 抽象
 │   ├── manager.py      #    ChannelManager
 │   └── telegram.py     #    Telegram 通道（首选）
-├── session/            # 💬 会话管理
+├── session/            # 会话管理
 │   └── manager.py      #    JSONL 持久化
-├── config/             # ⚙️ 配置
+├── config/             # 配置
 │   ├── schema.py       #    Pydantic 配置模型
 │   └── loader.py       #    配置加载
-├── cron/               # ⏰ 定时任务
+├── cron/               # 定时任务
 │   ├── service.py      #    调度服务
 │   └── types.py        #    任务类型定义
-├── heartbeat/          # 💓 心跳检测
+├── heartbeat/          # 心跳检测
 │   └── service.py      #    主动唤醒
-├── skills/             # 🎯 内置技能
-├── cli/                # 🖥️ CLI 命令
+├── skills/             # 内置技能
+├── cli/                # CLI 命令
 │   └── commands.py     #    Typer 命令定义
-└── utils/              # 🔧 工具函数
+└── utils/              # 工具函数
     └── helpers.py
 ```
 
