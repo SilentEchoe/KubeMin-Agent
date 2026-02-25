@@ -25,6 +25,8 @@ dependencies = [
     "loguru>=0.7.0",
     "rich>=13.0.0",
     "croniter>=2.0.0",
+    "pymupdf>=1.24.0",
+    "playwright>=1.40.0",
 ]
 
 [project.optional-dependencies]
@@ -34,9 +36,15 @@ dev = [
     "ruff>=0.1.0",
     "mypy>=1.0.0",
 ]
+game-test-service = [
+    "fastapi>=0.100.0",
+    "uvicorn>=0.23.0",
+    "python-multipart>=0.0.6",
+]
 
 [project.scripts]
 kubemin-agent = "kubemin_agent.cli.commands:app"
+game-test-agent = "kubemin_agent.agents.game_test.standalone:main"
 
 [build-system]
 requires = ["hatchling"]
