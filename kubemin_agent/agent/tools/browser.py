@@ -1,37 +1,27 @@
-"""Browser automation tool using Playwright for web game testing."""
+"""Browser automation tool via Chrome DevTools MCP."""
 
 from __future__ import annotations
 
-import asyncio
-from typing import Any, TYPE_CHECKING
-
-from loguru import logger
+from typing import Any
 
 from kubemin_agent.agent.tools.base import Tool
-
-if TYPE_CHECKING:
-    from playwright.async_api import Page
+from kubemin_agent.agent.tools.mcp_client import MCPClient
 
 
 MAX_CONTENT_LENGTH = 4000
-MAX_EVAL_RESULT_LENGTH = 2000
-DEFAULT_TIMEOUT_MS = 5000
-DEFAULT_VIEWPORT = {"width": 1280, "height": 720}
-USER_AGENT = "KubeMin-Agent GameTestBot/1.0"
 
 
 class BrowserTool(Tool):
     """
-    Browser automation via Playwright.
+    Browser automation via Chrome DevTools MCP.
 
-    Provides actions to navigate, click, type, scroll, wait,
-    and evaluate JavaScript on web pages.
+    Delegates all browser operations to the Chrome DevTools MCP server:
+    navigate, click, fill, hover, drag, scroll, wait, evaluate, snapshot,
+    console logs, and network requests.
     """
 
-    def __init__(self) -> None:
-        self._browser = None
-        self._context = None
-        self._page = None
+    def __init__(self, mcp: MCPClient) -> None:
+        self._mcp = mcp
 
     @property
     def name(self) -> str:
@@ -41,9 +31,11 @@ class BrowserTool(Tool):
     def description(self) -> str:
         return (
             "Perform browser actions on a web page for game testing. "
-            "Supports: navigate to URL, click elements, type text, scroll, wait, "
-            "evaluate JavaScript, and get page content. "
-            "The browser persists across calls within the same session."
+            "Supports: navigate to URL, click/hover/drag elements (by uid from snapshot), "
+            "fill text inputs, scroll, wait for elements, evaluate JavaScript, "
+            "get page snapshot (structured text with uids), list console messages, "
+            "and list network requests. "
+            "IMPORTANT: Before clicking or filling, first use 'snapshot' to get element uids."
         )
 
     @property
@@ -53,134 +45,129 @@ class BrowserTool(Tool):
             "properties": {
                 "action": {
                     "type": "string",
-                    "enum": ["navigate", "click", "type", "scroll", "wait", "evaluate", "content"],
+                    "enum": [
+                        "navigate", "click", "fill", "hover", "drag",
+                        "scroll", "wait", "evaluate", "snapshot",
+                        "press_key", "console_logs", "network",
+                    ],
                     "description": (
                         "Action to perform: "
                         "navigate (go to URL), "
-                        "click (click element), "
-                        "type (type into input), "
-                        "scroll (scroll page), "
-                        "wait (wait for selector/time), "
+                        "click (click element by uid), "
+                        "fill (type into input by uid), "
+                        "hover (hover element by uid), "
+                        "drag (drag element to another by uid), "
+                        "scroll (press Page_Down/Page_Up), "
+                        "wait (wait for condition), "
                         "evaluate (run JavaScript), "
-                        "content (get page text content)"
+                        "snapshot (get page content with element uids), "
+                        "press_key (press key combo), "
+                        "console_logs (get browser console messages), "
+                        "network (list network requests)"
                     ),
                 },
                 "url": {
                     "type": "string",
                     "description": "URL to navigate to (for 'navigate' action)",
                 },
-                "selector": {
+                "uid": {
                     "type": "string",
-                    "description": "CSS selector for the target element (for click/type/wait)",
+                    "description": "Element uid from page snapshot (for click/fill/hover)",
                 },
                 "value": {
                     "type": "string",
-                    "description": "Text to type (for 'type'), JS code (for 'evaluate'), or scroll direction (for 'scroll': up/down)",
+                    "description": (
+                        "Text to fill (for 'fill'), JS code (for 'evaluate'), "
+                        "key combo (for 'press_key', e.g. 'Enter', 'Control+A'), "
+                        "or scroll direction (for 'scroll': 'up'/'down')"
+                    ),
+                },
+                "to_uid": {
+                    "type": "string",
+                    "description": "Target element uid for 'drag' action",
                 },
                 "timeout": {
                     "type": "integer",
-                    "description": "Timeout in milliseconds (default: 5000)",
+                    "description": "Timeout in milliseconds (for 'wait', default: 5000)",
                 },
             },
             "required": ["action"],
         }
 
-    async def _ensure_browser(self) -> None:
-        """Launch browser if not already running."""
-        if self._page is not None:
-            return
-
-        try:
-            from playwright.async_api import async_playwright
-        except ImportError:
-            raise RuntimeError("playwright is not installed. Run: pip install playwright && playwright install chromium")
-
-        pw = await async_playwright().start()
-        self._browser = await pw.chromium.launch(headless=True)
-        self._context = await self._browser.new_context(
-            viewport=DEFAULT_VIEWPORT,
-            user_agent=USER_AGENT,
-        )
-        self._page = await self._context.new_page()
-        logger.info("Browser launched for game testing")
-
     async def execute(self, **kwargs: Any) -> str:
         action = kwargs["action"]
-        url = kwargs.get("url", "")
-        selector = kwargs.get("selector", "")
-        value = kwargs.get("value", "")
-        timeout = kwargs.get("timeout", DEFAULT_TIMEOUT_MS)
-
-        try:
-            await self._ensure_browser()
-        except RuntimeError as e:
-            return f"Error: {str(e)}"
 
         try:
             if action == "navigate":
+                url = kwargs.get("url", "")
                 if not url:
                     return "Error: 'url' is required for navigate action"
-                await self._page.goto(url, wait_until="domcontentloaded", timeout=timeout)
-                title = await self._page.title()
-                return f"Navigated to: {url}\nTitle: {title}\nURL: {self._page.url}"
+                return await self._mcp.call_tool("navigate_page", {"url": url})
 
             elif action == "click":
-                if not selector:
-                    return "Error: 'selector' is required for click action"
-                await self._page.click(selector, timeout=timeout)
-                await asyncio.sleep(0.3)
-                return f"Clicked: {selector}"
+                uid = kwargs.get("uid", "")
+                if not uid:
+                    return "Error: 'uid' is required. Use 'snapshot' first to get element uids."
+                return await self._mcp.call_tool("click", {"uid": uid, "includeSnapshot": True})
 
-            elif action == "type":
-                if not selector:
-                    return "Error: 'selector' is required for type action"
-                await self._page.fill(selector, value, timeout=timeout)
-                return f"Typed '{value}' into: {selector}"
+            elif action == "fill":
+                uid = kwargs.get("uid", "")
+                value = kwargs.get("value", "")
+                if not uid:
+                    return "Error: 'uid' is required. Use 'snapshot' first to get element uids."
+                return await self._mcp.call_tool("fill", {"uid": uid, "value": value, "includeSnapshot": True})
+
+            elif action == "hover":
+                uid = kwargs.get("uid", "")
+                if not uid:
+                    return "Error: 'uid' is required."
+                return await self._mcp.call_tool("hover", {"uid": uid, "includeSnapshot": True})
+
+            elif action == "drag":
+                from_uid = kwargs.get("uid", "")
+                to_uid = kwargs.get("to_uid", "")
+                if not from_uid or not to_uid:
+                    return "Error: 'uid' and 'to_uid' are required for drag."
+                return await self._mcp.call_tool("drag", {"from_uid": from_uid, "to_uid": to_uid})
 
             elif action == "scroll":
-                direction = value.lower() if value else "down"
-                delta = -500 if direction == "up" else 500
-                await self._page.mouse.wheel(0, delta)
-                await asyncio.sleep(0.3)
-                return f"Scrolled {direction}"
+                direction = kwargs.get("value", "down").lower()
+                key = "Page_Down" if direction != "up" else "Page_Up"
+                return await self._mcp.call_tool("press_key", {"key": key})
 
             elif action == "wait":
-                if selector:
-                    await self._page.wait_for_selector(selector, timeout=timeout)
-                    return f"Element found: {selector}"
-                else:
-                    wait_ms = timeout if timeout else 1000
-                    await asyncio.sleep(wait_ms / 1000)
-                    return f"Waited {wait_ms}ms"
+                # wait_for expects a description of what to wait for
+                value = kwargs.get("value", "page to load")
+                timeout = kwargs.get("timeout", 5000)
+                return await self._mcp.call_tool("wait_for", {
+                    "event": value,
+                    "timeout": timeout,
+                })
 
             elif action == "evaluate":
+                value = kwargs.get("value", "")
                 if not value:
-                    return "Error: 'value' (JavaScript code) is required for evaluate action"
-                result = await self._page.evaluate(value)
-                return f"Result: {str(result)[:MAX_EVAL_RESULT_LENGTH]}"
+                    return "Error: 'value' (JavaScript code) is required."
+                return await self._mcp.call_tool("evaluate_script", {"function": value})
 
-            elif action == "content":
-                text = await self._page.inner_text("body")
-                if len(text) > MAX_CONTENT_LENGTH:
-                    text = text[:MAX_CONTENT_LENGTH] + f"\n... [truncated, total {len(text)} chars]"
-                return f"Page content:\n{text}"
+            elif action == "snapshot":
+                result = await self._mcp.call_tool("take_snapshot", {})
+                if len(result) > MAX_CONTENT_LENGTH:
+                    result = result[:MAX_CONTENT_LENGTH] + f"\n... [truncated, total {len(result)} chars]"
+                return result
+
+            elif action == "press_key":
+                key = kwargs.get("value", "Enter")
+                return await self._mcp.call_tool("press_key", {"key": key})
+
+            elif action == "console_logs":
+                return await self._mcp.call_tool("list_console_messages", {})
+
+            elif action == "network":
+                return await self._mcp.call_tool("list_network_requests", {})
 
             else:
                 return f"Error: Unknown action '{action}'"
 
         except Exception as e:
             return f"Browser error ({action}): {type(e).__name__}: {str(e)}"
-
-    async def close(self) -> None:
-        """Close the browser."""
-        if self._browser:
-            await self._browser.close()
-            self._browser = None
-            self._context = None
-            self._page = None
-            logger.info("Browser closed")
-
-    @property
-    def page(self) -> Page | None:
-        """Access the current page (for screenshot tool)."""
-        return self._page

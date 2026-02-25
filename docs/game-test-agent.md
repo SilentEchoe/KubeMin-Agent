@@ -1,14 +1,21 @@
 # GameTestAgent 使用文档
 
-GameTestAgent 是一个**独立模块化**的 Web 游戏测试/审核子 Agent。它可以作为 KubeMin-Agent 中控层的子 Agent 被调度，也可以作为独立服务运行。
+GameTestAgent 是一个**独立模块化**的 Web 游戏测试/审核子 Agent。它通过 [Chrome DevTools MCP](https://github.com/ChromeDevTools/chrome-devtools-mcp) 自动化浏览器交互，可作为 KubeMin-Agent 中控层的子 Agent 被调度，也可以作为独立服务运行。
 
 ## 功能
 
 - 阅读 PDF 玩法指南，理解预期游戏行为
-- 通过浏览器自动化（Playwright）与 Web 游戏交互
+- 通过 Chrome DevTools MCP 自动化浏览器交互（点击、输入、拖拽、滚动、JS 执行）
 - 验证游戏逻辑正确性（规则是否按指南执行）
 - 审核游戏内容合规性（文本/图片敏感内容检测）
 - 测试 UI/UX 质量（交互元素、布局、反馈）
+- 检查 Console 错误和 Network 异常请求
+
+## 前置条件
+
+- [Node.js](https://nodejs.org/) >= 20.19（用于运行 chrome-devtools-mcp）
+- [Chrome](https://www.google.com/chrome/) 最新稳定版
+- npm（随 Node.js 安装）
 
 ## 安装
 
@@ -16,8 +23,9 @@ GameTestAgent 是一个**独立模块化**的 Web 游戏测试/审核子 Agent�
 
 ```bash
 pip install -e .
-playwright install chromium
 ```
+
+Chrome DevTools MCP 通过 `npx` 自动下载，无需手动安装。
 
 ### HTTP 服务模式（额外依赖）
 
@@ -55,15 +63,6 @@ game-test-agent serve \
   --api-key $LLM_API_KEY
 ```
 
-**参数说明**：
-
-| 参数 | 必填 | 说明 |
-|------|------|------|
-| `--port` | 否 | 服务端口（默认 8080） |
-| `--host` | 否 | 绑定地址（默认 0.0.0.0） |
-| `--api-key`, `-k` | 是 | LLM API Key |
-| `--model`, `-m` | 否 | LLM 模型 |
-
 **API 接口**：
 
 ```bash
@@ -87,38 +86,43 @@ python -m kubemin_agent.agents.game_test test \
 
 ### 4. 通过中控层调度
 
-当 GameTestAgent 注册到 KubeMin-Agent 中控层后，用户可以通过自然语言触发：
-
-```
-用户: 帮我测试这个游戏 https://game.example.com，玩法指南在 /path/to/guide.pdf
-```
-
-Scheduler 会自动识别意图并调度到 GameTestAgent。
+GameTestAgent 注册到中控层后，Scheduler 会自动识别意图并调度。
 
 ## 测试报告格式
-
-GameTestAgent 生成的测试报告包含以下章节：
 
 1. **Game Overview** -- 游戏基本信息
 2. **Logic Test Results** -- 游戏逻辑正确性验证结果
 3. **Content Audit Results** -- 内容合规审核结果
 4. **UI/UX Findings** -- UI/UX 测试发现
-5. **Issues Found** -- 发现的问题列表
-6. **Overall Assessment** -- 总体评估（PASS / FAIL / CONDITIONAL）
+5. **Console/Network Issues** -- JS 错误和网络异常
+6. **Issues Found** -- 发现的问题列表
+7. **Overall Assessment** -- 总体评估（PASS / FAIL / CONDITIONAL）
 
 ## 专属工具
 
 | 工具 | 功能 |
 |------|------|
 | `read_pdf` | 读取 PDF 玩法指南，提取文本内容 |
-| `browser_action` | 浏览器自动化：navigate / click / type / scroll / wait / evaluate / content |
-| `take_screenshot` | 截图保存至 workspace/screenshots/，用于视觉验证 |
-| `audit_content` | 页面内容审核：敏感文本检测 + 图片列表提取 |
+| `browser_action` | 12 种浏览器操作：navigate / click / fill / hover / drag / scroll / wait / evaluate / snapshot / press_key / console_logs / network |
+| `take_screenshot` | 截图保存，支持全页截图和元素级截图 |
+| `audit_content` | 内容审核：敏感文本检测 + 图片审核 + Console 错误检查 |
 
-## 截图存储
+## 元素定位
 
-测试过程中的截图保存在 `{workspace}/screenshots/` 目录下，文件名格式：
+GameTestAgent 使用 **uid 定位**（Chrome DevTools MCP 基于 a11y tree 自动分配），工作流程：
+
+1. 调用 `snapshot` 获取页面结构和元素 uid
+2. 使用 uid 进行 `click`、`fill`、`hover` 等操作
+3. 操作后返回更新的 snapshot
+
+## 架构
 
 ```
-{YYYYMMDD_HHMMSS}_{label}.png
+GameTestAgent
+  |
+  |-- MCPClient          (stdio JSON-RPC -> chrome-devtools-mcp subprocess)
+  |-- BrowserTool        (12 种操作 -> MCP tool calls)
+  |-- ScreenshotTool     (MCP take_screenshot)
+  |-- ContentAuditTool   (MCP take_snapshot + evaluate_script + list_console_messages)
+  |-- PDFReaderTool      (PyMuPDF, 本地处理)
 ```

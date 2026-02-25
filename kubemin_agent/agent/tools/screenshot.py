@@ -1,6 +1,7 @@
-"""Screenshot tool for visual state capture during game testing."""
+"""Screenshot tool via Chrome DevTools MCP."""
 
-import base64
+from __future__ import annotations
+
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -8,18 +9,18 @@ from typing import Any
 from loguru import logger
 
 from kubemin_agent.agent.tools.base import Tool
-from kubemin_agent.agent.tools.browser import BrowserTool
+from kubemin_agent.agent.tools.mcp_client import MCPClient
 
 
 class ScreenshotTool(Tool):
     """
-    Captures screenshots from the browser for visual analysis.
+    Captures screenshots via Chrome DevTools MCP.
 
-    Saves screenshots to workspace and returns base64 data for LLM vision.
+    Saves screenshots to workspace directory.
     """
 
-    def __init__(self, browser_tool: BrowserTool, workspace: Path) -> None:
-        self._browser_tool = browser_tool
+    def __init__(self, mcp: MCPClient, workspace: Path) -> None:
+        self._mcp = mcp
         self._screenshot_dir = workspace / "screenshots"
         self._screenshot_dir.mkdir(parents=True, exist_ok=True)
 
@@ -32,7 +33,7 @@ class ScreenshotTool(Tool):
         return (
             "Take a screenshot of the current browser page. "
             "Use this to visually verify game state, UI elements, and visual correctness. "
-            "Returns the screenshot file path and a base64-encoded image for analysis."
+            "Optionally capture a specific element by uid, or the full scrollable page."
         )
 
     @property
@@ -48,6 +49,10 @@ class ScreenshotTool(Tool):
                     "type": "boolean",
                     "description": "Capture the full scrollable page (default: false, viewport only)",
                 },
+                "uid": {
+                    "type": "string",
+                    "description": "Optional element uid to screenshot a specific element",
+                },
             },
             "required": ["name"],
         }
@@ -55,40 +60,29 @@ class ScreenshotTool(Tool):
     async def execute(self, **kwargs: Any) -> str:
         label = kwargs["name"]
         full_page = kwargs.get("full_page", False)
-
-        page = self._browser_tool.page
-        if page is None:
-            return "Error: No browser page is open. Use browser_action with 'navigate' first."
+        uid = kwargs.get("uid")
 
         try:
-            # Generate filename
+            # Generate filepath
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             safe_label = "".join(c if c.isalnum() or c in "_-" else "_" for c in label)
             filename = f"{timestamp}_{safe_label}.png"
             filepath = self._screenshot_dir / filename
 
-            # Take screenshot
-            screenshot_bytes = await page.screenshot(
-                path=str(filepath),
-                full_page=full_page,
-            )
+            # Build MCP args
+            mcp_args: dict[str, Any] = {
+                "filePath": str(filepath),
+                "format": "png",
+            }
+            if full_page:
+                mcp_args["fullPage"] = True
+            if uid:
+                mcp_args["uid"] = uid
 
-            # Encode to base64
-            b64_data = base64.b64encode(screenshot_bytes).decode("utf-8")
-
-            # Truncate base64 for the response (LLM doesn't need the full thing in text)
-            b64_preview = b64_data[:100] + "..." if len(b64_data) > 100 else b64_data
+            result = await self._mcp.call_tool("take_screenshot", mcp_args)
 
             logger.debug(f"Screenshot saved: {filepath}")
-
-            return (
-                f"Screenshot saved: {filepath}\n"
-                f"Size: {len(screenshot_bytes)} bytes\n"
-                f"Full page: {full_page}\n"
-                f"Base64 preview: {b64_preview}\n"
-                f"Page URL: {page.url}\n"
-                f"Page title: {await page.title()}"
-            )
+            return f"Screenshot saved: {filepath}\n{result}"
 
         except Exception as e:
             return f"Screenshot error: {type(e).__name__}: {str(e)}"
