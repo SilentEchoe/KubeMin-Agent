@@ -97,7 +97,9 @@ When rules conflict, apply this priority order:
 
 | Module | Responsibility |
 |--------|---------------|
-| `agent/` | Core Agent logic (Loop, Context, Memory, Skills) |
+| `control/` | Control plane (Scheduler, Validator, AgentRegistry, AuditLog) |
+| `agents/` | Sub-agents (BaseAgent, K8sAgent, WorkflowAgent, GeneralAgent, GameTestAgent) |
+| `agent/` | Agent runtime infrastructure (Loop, Context, Memory, Skills) |
 | `agent/tools/` | Tool registration and execution (Base, Registry, concrete tool implementations) |
 | `providers/` | LLM Provider abstraction and concrete implementations |
 | `bus/` | Message bus (decouples Channel from Agent) |
@@ -324,6 +326,13 @@ After each code implementation, **proactively suggest** SKILL.md improvements if
 - **Mitigation**: All documentation and code comments must use plain text descriptions only. No emoji characters in any project artifacts including SKILL.md, design docs, README, and inline comments
 - **Related Rule**: Section 5 (Documentation Updates) - implicit formatting standard
 
+### [LESSON-002] Must Read SKILL.md Before Every Task
+- **Date Discovered**: 2026-02-25
+- **Problem**: Implemented GameTestAgent without re-reading SKILL.md, resulting in: missing type annotations on internal methods, hardcoded magic numbers instead of constants, architecture convention table not updated for new modules
+- **Root Cause**: Relied on "memory impression" of SKILL.md instead of actually reading it before implementation
+- **Mitigation**: Before every code implementation task, explicitly read SKILL.md first. After implementation, self-review against the Pre-Delivery Checklist (Section 9)
+- **Related Rule**: Section 9 (Pre-Delivery Checklist), Section 3 (Code Standards - Type Annotations, Constants)
+
 ---
 
 ## 12. Changelog
@@ -334,3 +343,4 @@ After each code implementation, **proactively suggest** SKILL.md improvements if
 | v1.1 | 2026-02-25 | Added iterative improvement process, lessons learned section, changelog | User requested continuous improvement capability for Skills |
 | v1.2 | 2026-02-25 | Translated entire SKILL.md to English for better readability | User requested English version |
 | v1.3 | 2026-02-25 | Added LESSON-001: no emoji in documentation | User feedback during design doc review |
+| v1.4 | 2026-02-25 | Added LESSON-002: must read SKILL.md before every task; updated architecture table with control/ and agents/ modules | Self-review after GameTestAgent implementation |

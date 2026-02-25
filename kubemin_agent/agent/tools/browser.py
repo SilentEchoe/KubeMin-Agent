@@ -1,11 +1,23 @@
 """Browser automation tool using Playwright for web game testing."""
 
+from __future__ import annotations
+
 import asyncio
-from typing import Any
+from typing import Any, TYPE_CHECKING
 
 from loguru import logger
 
 from kubemin_agent.agent.tools.base import Tool
+
+if TYPE_CHECKING:
+    from playwright.async_api import Page
+
+
+MAX_CONTENT_LENGTH = 4000
+MAX_EVAL_RESULT_LENGTH = 2000
+DEFAULT_TIMEOUT_MS = 5000
+DEFAULT_VIEWPORT = {"width": 1280, "height": 720}
+USER_AGENT = "KubeMin-Agent GameTestBot/1.0"
 
 
 class BrowserTool(Tool):
@@ -86,8 +98,8 @@ class BrowserTool(Tool):
         pw = await async_playwright().start()
         self._browser = await pw.chromium.launch(headless=True)
         self._context = await self._browser.new_context(
-            viewport={"width": 1280, "height": 720},
-            user_agent="KubeMin-Agent GameTestBot/1.0",
+            viewport=DEFAULT_VIEWPORT,
+            user_agent=USER_AGENT,
         )
         self._page = await self._context.new_page()
         logger.info("Browser launched for game testing")
@@ -97,7 +109,7 @@ class BrowserTool(Tool):
         url = kwargs.get("url", "")
         selector = kwargs.get("selector", "")
         value = kwargs.get("value", "")
-        timeout = kwargs.get("timeout", 5000)
+        timeout = kwargs.get("timeout", DEFAULT_TIMEOUT_MS)
 
         try:
             await self._ensure_browser()
@@ -145,12 +157,12 @@ class BrowserTool(Tool):
                 if not value:
                     return "Error: 'value' (JavaScript code) is required for evaluate action"
                 result = await self._page.evaluate(value)
-                return f"Result: {str(result)[:2000]}"
+                return f"Result: {str(result)[:MAX_EVAL_RESULT_LENGTH]}"
 
             elif action == "content":
                 text = await self._page.inner_text("body")
-                if len(text) > 4000:
-                    text = text[:4000] + f"\n... [truncated, total {len(text)} chars]"
+                if len(text) > MAX_CONTENT_LENGTH:
+                    text = text[:MAX_CONTENT_LENGTH] + f"\n... [truncated, total {len(text)} chars]"
                 return f"Page content:\n{text}"
 
             else:
@@ -169,6 +181,6 @@ class BrowserTool(Tool):
             logger.info("Browser closed")
 
     @property
-    def page(self):
+    def page(self) -> Page | None:
         """Access the current page (for screenshot tool)."""
         return self._page

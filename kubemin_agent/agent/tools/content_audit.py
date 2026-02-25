@@ -1,10 +1,18 @@
 """Content audit tool for checking game content compliance."""
 
+from __future__ import annotations
+
 import re
-from typing import Any
+from typing import Any, TYPE_CHECKING
 
 from kubemin_agent.agent.tools.base import Tool
 from kubemin_agent.agent.tools.browser import BrowserTool
+
+if TYPE_CHECKING:
+    from playwright.async_api import Page
+
+MAX_TEXT_PREVIEW_LENGTH = 1000
+MAX_IMAGE_LIST = 20
 
 
 # Basic sensitive patterns (expandable)
@@ -80,7 +88,7 @@ class ContentAuditTool(Tool):
         except Exception as e:
             return f"Audit error: {type(e).__name__}: {str(e)}"
 
-    async def _audit_text(self, page) -> str:
+    async def _audit_text(self, page: Page) -> str:
         """Audit text content on the page."""
         text = await page.inner_text("body")
         lines: list[str] = ["[Text Audit]"]
@@ -100,14 +108,14 @@ class ContentAuditTool(Tool):
             lines.append("No sensitive content detected.")
 
         # Text preview
-        preview = text[:1000].strip()
-        if len(text) > 1000:
+        preview = text[:MAX_TEXT_PREVIEW_LENGTH].strip()
+        if len(text) > MAX_TEXT_PREVIEW_LENGTH:
             preview += f"\n... [truncated, total {len(text)} chars]"
         lines.append(f"\nText preview:\n{preview}")
 
         return "\n".join(lines)
 
-    async def _audit_images(self, page) -> str:
+    async def _audit_images(self, page: Page) -> str:
         """Audit images on the page."""
         images = await page.evaluate("""
             () => {
@@ -134,13 +142,13 @@ class ContentAuditTool(Tool):
             lines.append(f"Images missing alt text: {len(missing_alt)}")
 
         # List images
-        for i, img in enumerate(images[:20]):  # Cap at 20
+        for i, img in enumerate(images[:MAX_IMAGE_LIST]):  # Cap at MAX_IMAGE_LIST
             src = img.get("src", "")
             alt = img.get("alt", "")
             w, h = img.get("width", 0), img.get("height", 0)
             lines.append(f"  [{i+1}] {w}x{h} alt='{alt}' src={src[:100]}")
 
-        if len(images) > 20:
-            lines.append(f"  ... and {len(images) - 20} more")
+        if len(images) > MAX_IMAGE_LIST:
+            lines.append(f"  ... and {len(images) - MAX_IMAGE_LIST} more")
 
         return "\n".join(lines)
