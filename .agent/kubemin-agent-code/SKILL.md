@@ -317,7 +317,12 @@ After each code implementation, **proactively suggest** SKILL.md improvements if
 - **Related Rule**: Points to the rule added/modified in SKILL as a result
 -->
 
-_(No entries yet, to be populated through actual development iterations)_
+### [LESSON-001] No Emoji in Documentation
+- **Date Discovered**: 2026-02-25
+- **Problem**: Design document used emoji characters in module structure comments, reducing professionalism
+- **Root Cause**: Default tendency to use emoji for visual categorization in code comments
+- **Mitigation**: All documentation and code comments must use plain text descriptions only. No emoji characters in any project artifacts including SKILL.md, design docs, README, and inline comments
+- **Related Rule**: Section 5 (Documentation Updates) - implicit formatting standard
 
 ---
 
@@ -328,3 +333,4 @@ _(No entries yet, to be populated through actual development iterations)_
 | v1.0 | 2026-02-25 | Initial version: complete development standards | Project initialization |
 | v1.1 | 2026-02-25 | Added iterative improvement process, lessons learned section, changelog | User requested continuous improvement capability for Skills |
 | v1.2 | 2026-02-25 | Translated entire SKILL.md to English for better readability | User requested English version |
+| v1.3 | 2026-02-25 | Added LESSON-001: no emoji in documentation | User feedback during design doc review |
