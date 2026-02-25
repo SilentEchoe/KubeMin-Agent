@@ -6,16 +6,19 @@
 
 ## 1. 项目定位与目标
 
-**KubeMin-Agent** 是 KubeMin 平台的 AI Agent 模块，定位为面向云原生应用管理的智能助手。借鉴 nanobot 的轻量级 Agent 架构，为 KubeMin 用户提供：
+**KubeMin-Agent** 是 KubeMin 平台的 AI Agent 模块，采用**多 Agent 协作架构**，定位为面向云原生应用管理的智能助手。借鉴 nanobot 的轻量级设计，通过多个专业 Agent 协作为 KubeMin 用户提供：
 
-- **自然语言驱动的 K8s 运维**：通过对话完成资源查询、应用部署、故障诊断
-- **工作流智能编排**：Agent 辅助生成和优化 KubeMin Workflow
+- **自然语言驱动的 K8s 运维**：K8sAgent 专职处理资源查询、应用部署、故障诊断
+- **工作流智能编排**：WorkflowAgent 辅助生成、优化和管理 KubeMin Workflow
+- **通用任务处理**：GeneralAgent 处理文件操作、Web 搜索、通用问答
+- **智能路由与协调**：OrchestratorAgent 分析意图并将任务分派给最合适的专业 Agent
 - **多通道接入**：CLI、API、即时通讯（Telegram/飞书/钉钉）
 
 ### 核心差异（对比 nanobot）
 
 | 维度 | nanobot | KubeMin-Agent |
 |------|---------|---------------|
+| 架构 | 单 AgentLoop | 多 Agent 协作（Orchestrator + 专业 Agent） |
 | 定位 | 通用个人 AI 助手 | 云原生平台专用 Agent |
 | 工具集 | 文件/Shell/Web/消息 | K8s 运维 + KubeMin API + 文件/Shell |
 | 安全模型 | 正则拦截 + 工作区限制 | RBAC + Namespace 隔离 + 审计日志 |
@@ -26,54 +29,106 @@
 
 ## 2. 高层架构
 
-### 2.1 数据流总览
+### 2.1 多 Agent 协作架构
 
 ```mermaid
-flowchart LR
+flowchart TB
   U["用户"] --> CH["Channels: CLI/API/IM"]
   CH --> BUS["MessageBus"]
-  BUS --> LOOP["AgentLoop"]
-  LOOP --> CTX["ContextBuilder"]
-  LOOP --> LLM["LLMProvider (LiteLLM)"]
-  LOOP --> REG["ToolRegistry"]
-  REG --> K8S["K8s 工具"]
-  REG --> KAPI["KubeMin API 工具"]
-  REG --> FS["文件/Shell/Web 工具"]
-  LOOP --> STORE["Session / Memory / Cron"]
-  LOOP --> BUS
+  BUS --> ORCH["OrchestratorAgent"]
+
+  ORCH -->|"K8s 相关"| K8SA["K8sAgent"]
+  ORCH -->|"工作流相关"| WFA["WorkflowAgent"]
+  ORCH -->|"通用任务"| GA["GeneralAgent"]
+
+  subgraph Shared["共享基础设施"]
+    LLM["LLMProvider"]
+    CTX["AgentContext"]
+    STORE["Session / Memory"]
+  end
+
+  K8SA --> LLM
+  K8SA --> K8ST["K8s Tools"]
+  WFA --> LLM
+  WFA --> WFT["Workflow Tools"]
+  GA --> LLM
+  GA --> GT["General Tools"]
+
+  K8SA --> CTX
+  WFA --> CTX
+  GA --> CTX
+
+  K8SA --> BUS
+  WFA --> BUS
+  GA --> BUS
   BUS --> CH
   CH --> U
 ```
 
-### 2.2 模块划分
+### 2.2 多 Agent 角色定义
+
+| Agent | 职责 | 专属工具 |
+|-------|------|----------|
+| **OrchestratorAgent** | 意图识别、任务路由、结果汇总、多 Agent 协调 | route_to_agent, summarize |
+| **K8sAgent** | K8s 资源查询、应用部署、故障诊断、集群运维 | kubectl, kubemin_api |
+| **WorkflowAgent** | 工作流生成、优化、执行监控、编排建议 | workflow_crud, workflow_validate |
+| **GeneralAgent** | 文件操作、Shell 命令、Web 搜索、通用问答 | filesystem, shell, web_search, web_fetch |
+
+### 2.3 Agent 间通信机制
+
+```
+OrchestratorAgent 接收用户消息
+    |
+    ├── 意图分析：判断任务类型和所需 Agent
+    |
+    ├── 单 Agent 任务
+    │     └── 直接路由到目标 Agent → 结果返回用户
+    |
+    ├── 多 Agent 协作任务
+    │     ├── 拆分子任务 → 分派到多个 Agent
+    │     ├── 收集各 Agent 结果
+    │     └── 汇总合并 → 返回用户
+    |
+    └── 不确定 / 通用任务
+          └── 路由到 GeneralAgent
+```
+
+**共享上下文**: 所有 Agent 共享同一个 `AgentContext`（含 Session 和 Memory），确保对话连贯性。每个 Agent 执行完毕后，结果会写入共享 Session，供后续 Agent 参考。
+
+### 2.4 模块划分
 
 ```
 kubemin_agent/
-├── agent/              # 核心 Agent 逻辑
-│   ├── loop.py         #    Agent 循环（LLM ↔ 工具执行）
-│   ├── context.py      #    上下文装配器
-│   ├── memory.py       #    持久记忆
-│   ├── skills.py       #    技能加载器
-│   ├── subagent.py     #    后台子任务执行
+├── agents/             # 多 Agent 核心
+│   ├── base.py         #    BaseAgent 抽象基类
+│   ├── orchestrator.py #    OrchestratorAgent（路由与协调）
+│   ├── k8s_agent.py    #    K8sAgent（K8s 运维专家）
+│   ├── workflow_agent.py #  WorkflowAgent（工作流编排专家）
+│   ├── general_agent.py #   GeneralAgent（通用任务处理）
+│   └── registry.py     #    AgentRegistry（Agent 注册与发现）
+├── agent/              # Agent 运行时基础设施
+│   ├── loop.py         #    AgentLoop（单 Agent 执行循环）
+│   ├── context.py      #    AgentContext（共享上下文管理）
+│   ├── memory.py       #    MemoryStore（持久记忆）
+│   ├── skills.py       #    SkillsLoader（技能加载器）
 │   └── tools/          #    工具系统
 │       ├── base.py     #    Tool 抽象基类
-│       ├── registry.py #    工具注册表
+│       ├── registry.py #    ToolRegistry（工具注册表）
 │       ├── filesystem.py  # 文件操作工具
 │       ├── shell.py    #    命令执行工具
 │       ├── web.py      #    Web 搜索/抓取
-│       ├── message.py  #    消息发送工具
-│       ├── spawn.py    #    子任务工具
-│       └── kubectl.py  #    K8s 资源查询工具（新增）
+│       ├── kubectl.py  #    K8s 资源查询工具
+│       └── workflow.py #    工作流操作工具
 ├── providers/          # LLM Provider 抽象
 │   ├── base.py         #    LLMProvider / LLMResponse / ToolCallRequest
 │   └── litellm_provider.py  # LiteLLM 统一网关
 ├── bus/                # 消息路由
-│   ├── events.py       #    InboundMessage / OutboundMessage
+│   ├── events.py       #    InboundMessage / OutboundMessage / AgentMessage
 │   └── queue.py        #    MessageBus 异步队列
 ├── channels/           # 通道接入
 │   ├── base.py         #    BaseChannel 抽象
 │   ├── manager.py      #    ChannelManager
-│   └── telegram.py     #    Telegram 通道（首选）
+│   └── telegram.py     #    Telegram 通道
 ├── session/            # 会话管理
 │   └── manager.py      #    JSONL 持久化
 ├── config/             # 配置
@@ -95,125 +150,135 @@ kubemin_agent/
 
 ## 3. 核心模块设计
 
-### 3.1 AgentLoop（核心引擎）
+### 3.1 BaseAgent（Agent 抽象基类）
 
-**职责**：
-1. 从 `MessageBus` 拉取消息，构建上下文
-2. 调用 LLM（支持工具调用）
-3. 执行工具，将工具结果回填继续对话
-4. 保存会话历史到本地
-
-**关键设计**：
-- 工具调用循环限制：`max_iterations` 防止无限循环
-- 系统消息路由：`_process_system_message` 处理 subagent 回报
-- 工具上下文注入：每次消息处理时注入 channel/chat_id
+所有 Agent 继承自 `BaseAgent`，共享统一的执行循环和接口：
 
 ```python
-class AgentLoop:
-    def __init__(self, bus, provider, workspace, model=None, max_iterations=20):
-        self.bus = bus
+class BaseAgent(ABC):
+    """所有 Agent 的抽象基类。"""
+
+    def __init__(self, provider, context, tools=None):
         self.provider = provider
-        self.context = ContextBuilder(workspace)
-        self.tools = ToolRegistry()
-        self.sessions = SessionManager(workspace)
-        self._register_default_tools()
+        self.context = context          # 共享 AgentContext
+        self.tools = tools or ToolRegistry()
 
-    async def run(self):
-        """主循环：消费消息 → 处理 → 发送响应"""
-
-    async def _process_message(self, msg: InboundMessage) -> str | None:
-        """单条消息处理：构建上下文 → LLM → 工具循环 → 回送"""
-
-    async def process_direct(self, content: str, session_key="cli:direct") -> str:
-        """CLI 直接调用入口"""
-```
-
-### 3.2 Tool 系统
-
-**Tool 抽象基类**：
-
-```python
-class Tool(ABC):
     @property
     @abstractmethod
     def name(self) -> str: ...
 
     @property
     @abstractmethod
-    def description(self) -> str: ...
+    def system_prompt(self) -> str: ...
 
+    @abstractmethod
+    def get_tools(self) -> ToolRegistry: ...
+
+    async def run(self, message: str, session_key: str) -> str:
+        """执行 Agent 的 LLM + 工具调用循环"""
+```
+
+### 3.2 OrchestratorAgent（路由与协调）
+
+**职责**：
+1. 分析用户意图，判断任务类型
+2. 将任务路由到最合适的专业 Agent
+3. 处理多 Agent 协作场景（拆分子任务、汇总结果）
+4. 管理对话上下文的连贯性
+
+```python
+class OrchestratorAgent(BaseAgent):
+    def __init__(self, provider, context, agent_registry):
+        self.agent_registry = agent_registry  # 已注册的专业 Agent
+
+    async def route(self, message: str, session_key: str) -> str:
+        """分析意图 → 选择 Agent → 执行 → 返回结果"""
+
+    async def multi_agent_task(self, subtasks, session_key) -> str:
+        """多 Agent 协作：拆分 → 并行/串行执行 → 汇总"""
+```
+
+**路由策略**：OrchestratorAgent 通过 LLM 进行意图分类，输出目标 Agent 名称和提取的任务描述。不做复杂的规则匹配，而是依赖 LLM 的语义理解能力。
+
+### 3.3 专业 Agent
+
+**K8sAgent**：
+- 系统提示词：K8s 运维专家角色
+- 专属工具：`kubectl`（只读查询）、`kubemin_api`（平台 API）
+- 安全约束：Namespace 隔离、只读限制、审计日志
+
+**WorkflowAgent**：
+- 系统提示词：KubeMin Workflow 编排专家角色
+- 专属工具：`workflow_crud`（创建/读取/更新）、`workflow_validate`（校验）
+- 能力：生成 Workflow YAML、优化步骤编排、分析执行失败原因
+
+**GeneralAgent**：
+- 系统提示词：通用助手角色
+- 专属工具：`filesystem`、`shell`、`web_search`、`web_fetch`
+- 兜底 Agent：处理不属于其他 Agent 专长的任务
+
+### 3.4 AgentRegistry（Agent 注册与发现）
+
+```python
+class AgentRegistry:
+    def register(self, agent: BaseAgent) -> None: ...
+    def get(self, name: str) -> BaseAgent | None: ...
+    def list_agents(self) -> list[dict]: ...
+        # 返回 [{name, description, tools}] 供 Orchestrator 路由参考
+```
+
+### 3.5 Tool 系统
+
+**Tool 抽象基类**（不变）：
+
+```python
+class Tool(ABC):
+    @property
+    @abstractmethod
+    def name(self) -> str: ...
+    @property
+    @abstractmethod
+    def description(self) -> str: ...
     @property
     @abstractmethod
     def parameters(self) -> dict[str, Any]: ...  # JSON Schema
-
     @abstractmethod
     async def execute(self, **kwargs) -> str: ...
-
     def validate_params(self, params) -> list[str]: ...
     def to_schema(self) -> dict: ...  # OpenAI function 格式
 ```
 
-**ToolRegistry**：
-- 统一注册、校验、执行
-- 错误自动包装，参数校验返回具体字段
+**各 Agent 工具分配**：
 
-**KubeMin 专有工具（新增）**：
+| Agent | 工具集 | 安全约束 |
+|-------|--------|----------|
+| K8sAgent | `kubectl`, `kubemin_api` | 只读 + Namespace 限制 + RBAC |
+| WorkflowAgent | `workflow_crud`, `workflow_validate` | 操作审计日志 |
+| GeneralAgent | `filesystem`, `shell`, `web_search`, `web_fetch` | 工作区限制 + 危险命令拦截 |
+| OrchestratorAgent | `route_to_agent` | 仅路由，不直接执行业务工具 |
 
-| 工具 | 用途 | 安全约束 |
-|------|------|----------|
-| `kubectl_tool` | K8s 资源查询 | 仅只读命令 + Namespace 限制 |
-| `kubemin_api_tool` | KubeMin API 调用 | RBAC 权限检查 |
-| `workflow_tool` | 工作流操作 | 操作审计日志 |
+### 3.6 共享基础设施
 
-### 3.3 LLMProvider 抽象
+**LLMProvider**：通过 LiteLLM 统一网关，所有 Agent 共享同一个 Provider 实例。
 
-```python
-class LLMProvider(ABC):
-    async def chat(self, messages, tools=None, model=None,
-                   max_tokens=4096, temperature=0.7) -> LLMResponse: ...
-    def get_default_model(self) -> str: ...
+**AgentContext**：共享上下文管理，包含：
+- SessionManager：JSONL 持久化，key = `channel:chat_id`
+- MemoryStore：长期记忆 + 每日记忆
+- SkillsLoader：技能发现与加载
+- 各 Agent 执行结果写入同一 Session，保持对话连贯
 
-@dataclass
-class LLMResponse:
-    content: str | None
-    tool_calls: list[ToolCallRequest]
-    finish_reason: str = "stop"
-    usage: dict[str, int]
-```
+**MessageBus**：解耦 Channel 与 Agent，Channel 只负责接入和格式转换。
 
-**实现**：通过 LiteLLM 作为统一网关，支持 OpenRouter/Anthropic/OpenAI/Gemini/vLLM 等。
-
-### 3.4 MessageBus（消息路由）
-
-```python
-class MessageBus:
-    async def publish_inbound(self, msg: InboundMessage): ...
-    async def consume_inbound(self) -> InboundMessage: ...
-    async def publish_outbound(self, msg: OutboundMessage): ...
-    def subscribe_outbound(self, channel, callback): ...
-    async def dispatch_outbound(self): ...
-```
-
-解耦 Channel 与 Agent：Channel 只负责接入和格式转换，通过 Bus 与 Agent 通信。
-
-### 3.5 Session / Memory / ContextBuilder
-
-- **SessionManager**: JSONL 持久化到 `~/.kubemin-agent/sessions/`，key = `channel:chat_id`
-- **MemoryStore**: `memory/MEMORY.md`（长期）+ `memory/YYYY-MM-DD.md`（每日），纯文件存储
-- **ContextBuilder**: 拼装 identity + bootstrap + memory + skills + history → 系统提示词
-
-### 3.6 配置模型
-
-使用 Pydantic Settings，支持配置文件 + 环境变量：
+**配置模型**（Pydantic Settings）：
 
 ```python
 class Config(BaseSettings):
-    agents: AgentsConfig          # model、max_tokens、temperature
-    providers: ProvidersConfig    # 各 LLM provider 的 apiKey/apiBase
-    channels: ChannelsConfig      # Telegram/其他通道开关与凭证
-    tools: ToolsConfig            # 工具特定配置（exec timeout 等）
+    agents: AgentsConfig          # 各 Agent 的 model、temperature 等
+    providers: ProvidersConfig    # LLM provider 的 apiKey/apiBase
+    channels: ChannelsConfig      # 通道开关与凭证
+    tools: ToolsConfig            # 工具特定配置
     gateway: GatewayConfig        # 网关 host/port
-    kubemin: KubeMinConfig        # KubeMin API 地址、认证（新增）
+    kubemin: KubeMinConfig        # KubeMin API 地址、认证
 ```
 
 ---
