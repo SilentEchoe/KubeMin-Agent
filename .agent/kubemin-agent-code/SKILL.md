@@ -1,264 +1,330 @@
 ---
 name: kubemin-agent-code
-description: 帮助用户更规范地开发 KubeMin-Agent 项目（Python Agent）
+description: Help users develop the KubeMin-Agent project (Python Agent) in a more standardized manner
 metadata:
-  short-description: 支持 KubeMin-Agent 的开发
+  short-description: Supporting the development of KubeMin-Agent
 ---
 
-## 范围
+## Scope
 
-本技能定义了协助 **KubeMin-Agent** 项目（Python AI Agent）开发的工作协议，包括沟通规范、代码变更流程、测试约定、命名规范、文档同步和 PR 规范。
-
----
-
-## 规则优先级
-
-当规则冲突时，按如下优先顺序执行：
-1. **安全** > 正确性 > 性能
-2. **用户显式指令** > SKILL 规则 > 通用最佳实践
-3. **单轮交付**（低风险） > 多轮确认
-4. **现有项目约定** > 通用 Python 约定
+This skill defines the working agreement for assisting with the **KubeMin-Agent** project (Python AI Agent), including communication norms, code change workflow, testing expectations, naming conventions, documentation synchronization, and PR hygiene.
 
 ---
 
-## 1. 风险评估与交付策略
+## Rule Priority
 
-### 风险等级
+When rules conflict, apply this priority order:
+1. **Security** > Correctness > Performance
+2. **Explicit user instructions** > SKILL rules > General best practices
+3. **Single-turn delivery** (low risk) > Multi-turn confirmation
+4. **Existing project conventions** > General Python conventions
 
-| 等级 | 判定标准 | 交付策略 |
-|------|----------|----------|
-| **LR0** (纯内部) | 无公开 API/行为变更，不涉及持久化/并发/安全，单模块范围，行为保留的重构或非功能性变更 | 单轮交付 |
-| **LR1** (有限域) | 涉及持久化/并发/安全但满足下方全部 LR1 约束 | 单轮交付（含验证） |
-| **中/高** | API/行为变更、Schema 变更、新增共享并发状态、安全边界扩展、跨模块影响 | 先确认方案 |
+---
 
-### LR1 约束（须全部满足）
+## 1. Risk Assessment & Delivery Strategy
 
-- **范围限制**: ≤3 文件 或 ≤200 LOC 变更
-- **局部修复/安全修复**，无 API/契约变更
-- **可测试或可验证**，步骤可复现
-- **无 Schema 变更**（数据迁移、序列化格式）
-- **无新增共享并发状态**（如新全局字典 + 锁）
-- **无权限/访问范围扩展**
+### Risk Levels
 
-> **LR1 排除项**: Schema 变更、跨模块协议/序列化格式变更、新增共享并发状态、放宽认证/访问范围。
+| Level | Criteria | Delivery Strategy |
+|-------|----------|-------------------|
+| **LR0** (Pure Internal) | No public API/behavior changes, no persistence/concurrency/security involvement, single module scope, behavior-preserving refactors or non-functional changes | Single-turn delivery |
+| **LR1** (Limited Domain) | Touches persistence/concurrency/security BUT satisfies all LR1 constraints below | Single-turn delivery (with verification) |
+| **Medium/High** | API/behavior changes, schema changes, new shared concurrency state, security boundary expansion, cross-module impact | Confirm plan first |
 
-### 效率规则
+### LR1 Constraints (must satisfy ALL)
 
-- **低风险但模糊**: 带明确假设推进。仅在假设可能影响正确性、安全性或公开行为时才提问。
-- **单轮优先**: 在一次回复中交付方案 + 代码 + 测试/验证 + 文档/PR，除非中/高风险需确认。
-- **批量处理**: 同一会话中多项低风险变更 → 一次合并交付。
+- **Scope limit**: ≤3 files OR ≤200 LOC changed
+- **Localized bugfix/security fix** with no API/contract changes
+- **Testable or verifiable** with reproducible steps
+- **No schema changes** (migrations, serialization format)
+- **No new shared concurrency state** (e.g., new global dict + lock)
+- **No permission/access scope expansion**
 
-### 交付块顺序
+> **LR1 exclusions**: Schema changes, cross-module protocol/serialization format changes, new shared concurrency state, relaxed auth/access scope.
+
+### Efficiency Rules
+
+- **Ambiguous but low-risk**: Proceed with clearly stated assumptions. Ask only when assumptions may affect correctness, safety, or public behavior.
+- **Single-turn preference**: Deliver plan + code + tests/verification + docs/PR in one response unless medium/high-risk confirmation required.
+- **Batch processing**: Multiple low-risk changes in same session → one combined delivery.
+
+### Delivery Block Order
 
 ```
-1. 风险评估 (LR0/LR1/中/高)
-2. 假设（如有歧义）
-3. 方案（将变更什么）
-4. 补丁（代码变更）
-5. 测试/验证（如有意义）
-6. 文档/PR（仅在需要时）
+1. Risk Assessment (LR0/LR1/Medium/High)
+2. Assumptions (if any ambiguity)
+3. Plan (what will change)
+4. Patch (code changes)
+5. Tests/Verification (if meaningful)
+6. Docs/PR (only if required or requested)
 ```
 
 ---
 
-## 2. 沟通
+## 2. Communication
 
-- 默认使用 **中文** 与用户沟通
-- 文档默认中文；仅在用户明确要求时使用英文
-- 仅在用户要求时为特定产物提供英文版
-
----
-
-## 3. 代码规范
-
-### 命名
-- 遵循 Python PEP 8 规范：`snake_case` 用于函数/变量/模块，`CamelCase` 用于类名
-- 优先沿用项目中已有的命名模式
-- 名称应清晰表达意图；避免缩写（项目内标准缩写除外）
-
-### 风格
-- 追求简洁；避免过度工程
-- 函数短小、可组合、Early Return
-- 异步代码使用 `async/await`，正确传播取消与超时
-- 错误使用自定义异常，包含可追溯的上下文信息
-- 类型标注：所有公共接口添加完整 Type Hints
-
-### 常量与配置
-
-| 类型 | 位置 |
-|------|------|
-| 单包常量 | 最近的包内（如 `agent/constants.py`） |
-| 跨域常量 | `config/constants.py` 或项目既有公共常量位置（避免反向依赖业务包） |
-| 运行时可配置值 | `config/` 包，使用 Pydantic Settings |
-
-> **规则**: 可复用字符串/枚举应集中管理，避免散落硬编码。仅运行时可配置的项属于 `config/`。
-
-### 项目架构约定
-
-| 模块 | 职责 |
-|------|------|
-| `agent/` | 核心 Agent 逻辑（Loop、Context、Memory、Skills） |
-| `agent/tools/` | 工具注册与执行（Base、Registry、具体工具实现） |
-| `providers/` | LLM Provider 抽象与具体实现 |
-| `bus/` | 消息总线（解耦 Channel 与 Agent） |
-| `channels/` | 通道接入（CLI、Telegram 等） |
-| `session/` | 会话管理与持久化 |
-| `config/` | 配置模型与加载 |
-| `cron/` | 定时任务调度 |
-| `heartbeat/` | 心跳检测与主动唤醒 |
-| `skills/` | 内置技能 |
-| `cli/` | CLI 命令入口 |
-| `utils/` | 通用工具函数 |
-
-### 自查
-实现后：消除重复、减少嵌套、移除冗余分支、检查类型标注完整性。
+- Communicate with user in **Chinese** by default
+- Documentation defaults to Chinese; English only when explicitly requested
+- Provide English for specific artifacts only when user requests
 
 ---
 
-## 4. 测试要求
+## 3. Code Standards
 
-| 变更类型 | 测试策略 |
-|----------|----------|
-| LR0 (非功能性) | 仅在有意义时加测试 |
-| LR0 (逻辑变更) | 覆盖修改逻辑的最小单测 |
-| LR1 变更 | 单测 或 验证步骤 |
-| 中/高风险 | 完整覆盖：参数化测试、边界用例、失败路径 |
+### Naming
+- Follow Python PEP 8 conventions: `snake_case` for functions/variables/modules, `CamelCase` for class names
+- Prefer existing naming patterns in the project
+- Names should express intent clearly; avoid abbreviations (except project-standard ones)
 
-### 测试豁免与替代
+### Style
+- Favor simplicity; avoid over-engineering
+- Small functions, composable, early returns
+- Async code uses `async/await`, properly propagate cancellation and timeouts
+- Errors use custom exceptions with traceable context information
+- Type annotations: add complete Type Hints for all public interfaces
 
-当单测不可行时，记录：
-1. **为何不可测**: 如 Handler 层依赖复杂外部组件
-2. **替代验证**（必须**可复现且可直接执行**）：
-   - 精确的执行命令
-   - 预期输出/行为
+### Constants & Configuration
 
-**Handler 层豁免**: 若 Handler 层无单测，必须提供：
-- 底层 Service/Domain 层的单测覆盖（如受当前变更影响），或
-- 可复现的 curl/CLI/集成命令与预期结果
+| Type | Location |
+|------|----------|
+| Single-package constants | Nearest package (e.g., `agent/constants.py`) |
+| Cross-domain constants | `config/constants.py` or project's existing public constants location (avoid reverse-depending on business packages) |
+| Runtime-configurable values | `config/` package, using Pydantic Settings |
 
-豁免场景：
-- 日志/注释/格式变更（测试无意义）
-- Handler 代码有复杂依赖（但 Service 层必须覆盖）
+> **Rule**: Reusable strings/enums should be centralized, avoid scattered hard-coding. Only runtime-configurable items belong in `config/`.
 
-### 测试组织
-- 使用 `pytest` 作为测试框架
-- 同一功能的测试放在**同一测试文件中**
-- 扩展已有 `test_*.py` 文件；只在无合适文件时新建
-- 使用 `conftest.py` 管理共享 fixture
+### Project Architecture Conventions
 
----
+| Module | Responsibility |
+|--------|---------------|
+| `agent/` | Core Agent logic (Loop, Context, Memory, Skills) |
+| `agent/tools/` | Tool registration and execution (Base, Registry, concrete tool implementations) |
+| `providers/` | LLM Provider abstraction and concrete implementations |
+| `bus/` | Message bus (decouples Channel from Agent) |
+| `channels/` | Channel integration (CLI, Telegram, etc.) |
+| `session/` | Session management and persistence |
+| `config/` | Configuration model and loading |
+| `cron/` | Scheduled task scheduling |
+| `heartbeat/` | Heartbeat detection and proactive wake-up |
+| `skills/` | Built-in skills |
+| `cli/` | CLI command entry |
+| `utils/` | Common utility functions |
 
-## 5. 文档更新
-
-### 触发条件
-
-| 变更影响 | 需要更新 `docs/`? |
-|----------|-------------------|
-| 用户可见行为/API/配置/运维 | ✅ 是 |
-| 契约日志 | ✅ 是 |
-| 调试/诊断日志 | ❌ 否 |
-| 错误契约变更 | ✅ 是 |
-| 默认值/语义变更 | ✅ 是 |
-| 纯内部重构/非功能性 | ❌ 否 |
-
-### 文档内容（需要时）
-- 摘要、动机、关键设计决策
-- API/行为变更
-- 测试覆盖描述
-- 测试执行命令
-
-### 组织规则
-- 同一 PR 的文档合并为**每个主题一个 Markdown 文件**
-- 如仓库缺少 `docs/` 目录 → 先确认再创建；否则更新已有结构
-- 语言：默认中文
+### Self-Review
+After implementation: eliminate duplication, reduce nesting, remove redundant branches, check type annotation completeness.
 
 ---
 
-## 6. PR 指南
+## 4. Testing Requirements
 
-### 格式
-- **标题**: 清晰的祈使句
-- **正文**: 摘要 / 变更 / 测试 / 备注
-- ⚠️ 使用真换行，而非 `\n` 转义符
+| Change Type | Test Strategy |
+|-------------|---------------|
+| LR0 (non-functional) | Tests only if meaningful |
+| LR0 (logic changes) | Minimal unit tests covering modified logic |
+| LR1 changes | Unit tests OR verification steps |
+| Medium/High risk | Full coverage: parameterized tests, edge cases, failure paths |
 
-### 何时提供 PR 描述
-- 用户明确要求（"给我 PR 描述" / "准备提交 PR"）
-- 变更需要文档/示例（完整交付场景）
-- 默认：仅提供标题 + 简要摘要
+### Test Exemption & Alternatives
 
-### 更新
-仅在新提交改变范围或实质影响用户可见行为/API、配置或风险时才更新 PR 描述。
+When unit tests are impractical, document:
+1. **Why not testable**: e.g., handler layer with complex external dependencies
+2. **Alternative verification** (must be **reproducible and copy-pasteable**):
+   - Exact commands to run
+   - Expected output/behavior
 
----
+**Handler layer exemption**: If handler layer has no unit tests, must provide:
+- Unit test coverage for the underlying service/domain layer (if affected by this change), OR
+- Reproducible curl/CLI/integration commands with expected results
 
-## 7. 依赖管理
+Acceptable exemption cases:
+- Log/comment/formatting changes (testing adds no value)
+- Handler code with complex dependencies (but service layer must be covered)
 
-### 核心依赖约定
-
-| 用途 | 推荐库 |
-|------|--------|
-| CLI 框架 | `typer` |
-| LLM 网关 | `litellm` |
-| 配置模型 | `pydantic` + `pydantic-settings` |
-| HTTP 客户端 | `httpx` |
-| 日志 | `loguru` |
-| 定时调度 | `croniter` |
-| 终端输出 | `rich` |
-| 异步 WebSocket | `websockets` |
-
-### 规则
-- 新增依赖须说明理由，优先复用已有依赖
-- 使用 `pyproject.toml` 管理依赖
-- 使用 `hatchling` 作为构建后端
+### Test Organization
+- Use `pytest` as the testing framework
+- Keep tests for same feature in **one test file**
+- Extend existing `test_*.py` files; create new only when no suitable file exists
+- Use `conftest.py` to manage shared fixtures
 
 ---
 
-## 8. 反模式
+## 5. Documentation Updates
 
-| ❌ 不要 | ✅ 应该 |
-|---------|---------|
-| 滥用 LR1 做 Schema/共享状态变更 | 仅在定义约束内使用 LR1 |
-| 跳过测试且无可复现替代方案 | 提供可直接执行的验证命令 |
-| 为每条日志变更写文档 | 仅为契约日志写文档 |
-| 跨域常量放在随机包内 | 使用 `config/constants.py` 管理共享常量 |
-| 总是生成完整文档/PR | 仅在需要时才生成 |
-| 绕过 AgentLoop 直接修改流程 | 新增能力必须挂在既有接口下 |
-| 在工具返回中暴露敏感信息 | API Key 仅从配置或环境变量读取 |
+### Trigger Conditions
+
+| Change Impact | Requires `docs/`? |
+|---------------|-------------------|
+| User-visible behavior/API/config/ops | ✅ Yes |
+| Contract logs | ✅ Yes |
+| Debug/diagnostic logs | ❌ No |
+| Error contract changes | ✅ Yes |
+| Default value/semantic changes | ✅ Yes |
+| Pure internal refactoring / non-functional | ❌ No |
+
+### Documentation Content (when required)
+- Summary, motivation, key design decisions
+- API/behavior changes
+- Test coverage description
+- Test execution commands
+
+### Organization Rules
+- Merge docs for same PR into **one Markdown file** per topic
+- If repository lacks `docs/` directory → confirm before creating; otherwise update existing structure
+- Language: Chinese by default
 
 ---
 
-## 9. 交付前检查清单
+## 6. PR Guidelines
 
-- [ ] 风险等级 (LR0/LR1/中/高) 正确评估？
-- [ ] LR1 约束已验证（≤3 文件，无 Schema/共享状态变更）？
-- [ ] 交付块顺序已遵循？
-- [ ] 测试已提供 或 可复现验证已记录？
-- [ ] 契约日志在要求文档前已声明？
-- [ ] 文档/PR 仅在需要时才提供？
-- [ ] 类型标注完整？
-- [ ] async/await 使用正确？
+### Format
+- **Title**: Clear imperative sentence
+- **Body**: Summary / Changes / Testing / Notes
+- ⚠️ Use real newlines, not `\n` escape sequences
+
+### When to Provide PR Description
+- User explicitly requests ("give me PR description" / "preparing to submit PR")
+- Change requires docs/examples (complete delivery scenario)
+- Default: title + brief summary only
+
+### Updates
+Only update PR description when new commits change scope or materially affect user-visible behavior/API, configuration, or risk.
 
 ---
 
-## 决策流程
+## 7. Dependency Management
+
+### Core Dependency Conventions
+
+| Purpose | Recommended Library |
+|---------|-------------------|
+| CLI framework | `typer` |
+| LLM gateway | `litellm` |
+| Config model | `pydantic` + `pydantic-settings` |
+| HTTP client | `httpx` |
+| Logging | `loguru` |
+| Cron scheduling | `croniter` |
+| Terminal output | `rich` |
+| Async WebSocket | `websockets` |
+
+### Rules
+- New dependencies must justify their inclusion, prefer reusing existing dependencies
+- Use `pyproject.toml` to manage dependencies
+- Use `hatchling` as the build backend
+
+---
+
+## 8. Anti-patterns
+
+| ❌ Don't | ✅ Do |
+|----------|-------|
+| Abuse LR1 for schema/shared-state changes | Use LR1 only within defined constraints |
+| Skip tests without reproducible alternative | Provide copy-pasteable verification commands |
+| Document every log change | Only document contract logs |
+| Put cross-domain constants in random packages | Use `config/constants.py` for shared constants |
+| Always generate full docs/PR | Only when required or requested |
+| Bypass AgentLoop to modify flow directly | New capabilities must be attached under existing interfaces |
+| Expose sensitive info in tool returns | API Keys only read from config or env vars |
+
+---
+
+## 9. Pre-Delivery Checklist
+
+- [ ] Risk level (LR0/LR1/Medium/High) correctly assessed?
+- [ ] LR1 constraints verified (≤3 files, no schema/shared-state changes)?
+- [ ] Delivery block order followed?
+- [ ] Tests provided OR reproducible verification documented?
+- [ ] Contract logs declared before requiring docs?
+- [ ] Docs/PR only if required?
+- [ ] Type annotations complete?
+- [ ] async/await usage correct?
+
+---
+
+## Decision Flow
 
 ```
-接收请求 → 评估风险
+Receive request → Assess risk
     │
-    ├── LR0 (纯内部)
-    │     └── 单轮：方案 + 补丁 + 测试（如有意义）+ 文档（如需要）
+    ├── LR0 (Pure Internal)
+    │     └── Single-turn: Plan + Patch + Tests (if meaningful) + Docs (if required)
     │
-    ├── LR1 (有限域) — 先验证约束
-    │     ├── ≤3 文件, ≤200 LOC?
-    │     ├── 无 Schema/共享状态/权限扩展?
-    │     └── 是 → 单轮：方案 + 补丁 + 测试/验证 + 文档（如需要）
+    ├── LR1 (Limited Domain) — verify constraints first
+    │     ├── ≤3 files, ≤200 LOC?
+    │     ├── No schema/shared-state/auth-expansion?
+    │     └── Yes → Single-turn: Plan + Patch + Tests/Verification + Docs (if required)
     │
-    └── 中/高
-          └── 先确认方案 → 用户批准 → 实现
+    └── Medium/High
+          └── Confirm plan → User approval → Implement
                   │
-                  ├── 影响公开 API? → 生成 examples/
-                  │     (含默认值、分页)
+                  ├── Affects public API? → Generate examples/
+                  │     (includes defaults, pagination)
                   │
-                  └── 用户可见变更? → 生成 docs/
-                        (仅契约日志)
+                  └── User-visible change? → Generate docs/
+                        (contract logs only)
 ```
+
+---
+
+## 10. Iterative Improvement Process
+
+This SKILL.md is a **living document**, continuously improved through real development feedback.
+
+### Improvement Triggers
+
+| Trigger Scenario | Action |
+|-----------------|--------|
+| User reports recurring issues found in review | → Analyze root cause → Propose new/modified rules → Update SKILL.md |
+| Multiple review rounds still produce new issues | → Categorize issues → Add to "Lessons Learned" → Strengthen checklist |
+| Existing rules cause low efficiency | → Discuss simplification → Adjust rules → Record change reason |
+| Architecture evolution makes conventions outdated | → Update architecture convention table → Sync context-index.md |
+
+### Improvement Flow
+
+```
+User reports issue → Analyze if systemic
+    │
+    ├── One-off issue → Fix code only, don't change SKILL
+    │
+    └── Systemic/recurring issue → Propose SKILL improvement
+          │
+          ├── 1. Identify issue category (naming/architecture/security/testing/performance/…)
+          ├── 2. Propose specific rule changes (for user confirmation)
+          ├── 3. After user confirms, update corresponding SKILL.md section
+          ├── 4. Add to "Lessons Learned" section
+          └── 5. Record in "Changelog"
+```
+
+### Proactive Suggestion Timing
+
+After each code implementation, **proactively suggest** SKILL.md improvements if:
+- Repeatedly hesitated on design decisions during implementation (indicates rules are unclear)
+- Bypassed a rule in the code (indicates rule may be unreasonable or needs exception clause)
+- Discovered quality risk points not covered by existing rules
+
+---
+
+## 11. Lessons Learned (Review Retrospective)
+
+> This section records recurring issues and pitfalls discovered during reviews, for proactive avoidance in future development.
+> Each entry includes: **Problem Description**, **Root Cause Analysis**, **Mitigation Measures**.
+
+<!-- Template:
+### [LESSON-XXX] Brief Problem Description
+- **Date Discovered**: YYYY-MM-DD
+- **Problem**: Specific description of what happened
+- **Root Cause**: Why this problem occurred
+- **Mitigation**: How to avoid this in the future (synced to which SKILL section)
+- **Related Rule**: Points to the rule added/modified in SKILL as a result
+-->
+
+_(No entries yet, to be populated through actual development iterations)_
+
+---
+
+## 12. Changelog
+
+| Version | Date | Changes | Trigger |
+|---------|------|---------|---------|
+| v1.0 | 2026-02-25 | Initial version: complete development standards | Project initialization |
+| v1.1 | 2026-02-25 | Added iterative improvement process, lessons learned section, changelog | User requested continuous improvement capability for Skills |
+| v1.2 | 2026-02-25 | Translated entire SKILL.md to English for better readability | User requested English version |
