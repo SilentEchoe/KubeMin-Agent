@@ -1,124 +1,158 @@
 # KubeMin-Agent 设计文档与实现计划
 
-> 基于 nanobot 项目架构，结合 KubeMin 平台场景定制的 AI Agent 设计。
+> KubeMin-Agent 是 KubeMin 体系的 Agent 中台中控，统一管理和调度所有子 Agent。
 
 ---
 
 ## 1. 项目定位与目标
 
-**KubeMin-Agent** 是 KubeMin 平台的 AI Agent 模块，采用**多 Agent 协作架构**，定位为面向云原生应用管理的智能助手。借鉴 nanobot 的轻量级设计，通过多个专业 Agent 协作为 KubeMin 用户提供：
+**KubeMin-Agent** 是 KubeMin 体系的 **Agent 中台中控**（Agent Control Plane）。它不是某一个具体的 Agent，而是整个 Agent 生态系统的管理层和运行底座，负责：
 
-- **自然语言驱动的 K8s 运维**：K8sAgent 专职处理资源查询、应用部署、故障诊断
-- **工作流智能编排**：WorkflowAgent 辅助生成、优化和管理 KubeMin Workflow
-- **通用任务处理**：GeneralAgent 处理文件操作、Web 搜索、通用问答
-- **智能路由与协调**：OrchestratorAgent 分析意图并将任务分派给最合适的专业 Agent
-- **多通道接入**：CLI、API、即时通讯（Telegram/飞书/钉钉）
+- **子 Agent 全生命周期管理** -- 注册、发现、启停、健康检查
+- **智能任务调度** -- 接收用户请求，分析意图，将任务调度到最合适的子 Agent
+- **执行校验与质量管控** -- 校验子 Agent 输出，拦截不安全操作，审计所有执行
+- **上下文与记忆管理** -- 为所有子 Agent 提供统一的会话、记忆和配置基础设施
+- **多通道统一接入** -- CLI、API、即时通讯（Telegram/飞书/钉钉）
+
+### KubeMin 体系全景
+
+```
+KubeMin 体系
+├── KubeMin-Console    -- 前端控制台（Web UI）
+├── KubeMin-Cli        -- 命令行工具
+├── KubeMin-Agent      -- Agent 中台中控（本项目）
+│   ├── K8sAgent       -- K8s 运维子 Agent
+│   ├── WorkflowAgent  -- 工作流编排子 Agent
+│   ├── GeneralAgent   -- 通用任务子 Agent
+│   └── ...            -- 未来可扩展更多子 Agent
+└── KubeMin-Platform   -- 后端平台服务
+```
 
 ### 核心差异（对比 nanobot）
 
 | 维度 | nanobot | KubeMin-Agent |
 |------|---------|---------------|
-| 架构 | 单 AgentLoop | 多 Agent 协作（Orchestrator + 专业 Agent） |
-| 定位 | 通用个人 AI 助手 | 云原生平台专用 Agent |
-| 工具集 | 文件/Shell/Web/消息 | K8s 运维 + KubeMin API + 文件/Shell |
-| 安全模型 | 正则拦截 + 工作区限制 | RBAC + Namespace 隔离 + 审计日志 |
-| 部署形态 | 单机单进程 | 可嵌入 KubeMin 平台或独立部署 |
-| 记忆 | 纯文本文件 | 文本文件 + 未来可扩展向量检索 |
+| 定位 | 单体个人 AI 助手 | Agent 中台中控（管理多个子 Agent） |
+| 架构 | 单 AgentLoop | 中控调度层 + 受管子 Agent |
+| 关注点 | 自身执行能力 | 子 Agent 的调度、校验、管控 |
+| 工具集 | 文件/Shell/Web/消息 | 按子 Agent 隔离（K8s/Workflow/通用） |
+| 安全模型 | 正则拦截 + 工作区限制 | 中控层统一校验 + RBAC + 审计 |
+| 扩展性 | 新增 Tool | 新增整个子 Agent |
+| 部署 | 单机单进程 | 可嵌入 KubeMin 平台或独立部署 |
 
 ---
 
 ## 2. 高层架构
 
-### 2.1 多 Agent 协作架构
+### 2.1 中台中控架构
 
 ```mermaid
 flowchart TB
-  U["用户"] --> CH["Channels: CLI/API/IM"]
+  U["用户"] --> CH["Channels: CLI / API / IM"]
   CH --> BUS["MessageBus"]
-  BUS --> ORCH["OrchestratorAgent"]
 
-  ORCH -->|"K8s 相关"| K8SA["K8sAgent"]
-  ORCH -->|"工作流相关"| WFA["WorkflowAgent"]
-  ORCH -->|"通用任务"| GA["GeneralAgent"]
+  subgraph ControlPlane["KubeMin-Agent 中控层"]
+    SCHED["Scheduler (调度器)"]
+    VALID["Validator (校验器)"]
+    REG["AgentRegistry (注册中心)"]
+    AUDIT["AuditLog (审计日志)"]
+  end
 
-  subgraph Shared["共享基础设施"]
+  BUS --> SCHED
+  SCHED --> REG
+  SCHED -->|"调度"| K8SA["K8sAgent"]
+  SCHED -->|"调度"| WFA["WorkflowAgent"]
+  SCHED -->|"调度"| GA["GeneralAgent"]
+
+  K8SA -->|"结果"| VALID
+  WFA -->|"结果"| VALID
+  GA -->|"结果"| VALID
+  VALID --> AUDIT
+  VALID --> BUS
+
+  subgraph Infra["共享基础设施"]
     LLM["LLMProvider"]
-    CTX["AgentContext"]
-    STORE["Session / Memory"]
+    CTX["SessionManager / MemoryStore"]
   end
 
   K8SA --> LLM
-  K8SA --> K8ST["K8s Tools"]
   WFA --> LLM
-  WFA --> WFT["Workflow Tools"]
   GA --> LLM
-  GA --> GT["General Tools"]
-
   K8SA --> CTX
   WFA --> CTX
   GA --> CTX
 
-  K8SA --> BUS
-  WFA --> BUS
-  GA --> BUS
-  BUS --> CH
-  CH --> U
+  BUS --> CH --> U
 ```
 
-### 2.2 多 Agent 角色定义
+### 2.2 中控层核心职责
 
-| Agent | 职责 | 专属工具 |
-|-------|------|----------|
-| **OrchestratorAgent** | 意图识别、任务路由、结果汇总、多 Agent 协调 | route_to_agent, summarize |
-| **K8sAgent** | K8s 资源查询、应用部署、故障诊断、集群运维 | kubectl, kubemin_api |
-| **WorkflowAgent** | 工作流生成、优化、执行监控、编排建议 | workflow_crud, workflow_validate |
-| **GeneralAgent** | 文件操作、Shell 命令、Web 搜索、通用问答 | filesystem, shell, web_search, web_fetch |
+| 组件 | 职责 |
+|------|------|
+| **Scheduler（调度器）** | 接收消息 -> 意图分析 -> 选择子 Agent -> 分派任务（含拆分和编排） |
+| **Validator（校验器）** | 校验子 Agent 输出的合规性、安全性；拦截不允许的操作 |
+| **AgentRegistry（注册中心）** | 子 Agent 注册、发现、健康状态、能力描述 |
+| **AuditLog（审计日志）** | 记录所有调度决策、Agent 执行和工具调用 |
 
-### 2.3 Agent 间通信机制
+### 2.3 子 Agent 定义
+
+| 子 Agent | 职责 | 专属工具 | 安全约束 |
+|----------|------|----------|----------|
+| **K8sAgent** | K8s 资源查询、故障诊断、集群运维 | kubectl, kubemin_api | Namespace 隔离 + 只读 |
+| **WorkflowAgent** | 工作流生成、优化、执行监控 | workflow_crud, workflow_validate | 操作审计 |
+| **GeneralAgent** | 文件操作、Shell 命令、Web 搜索、通用问答 | filesystem, shell, web | 工作区限制 + 命令拦截 |
+
+### 2.4 任务调度流程
 
 ```
-OrchestratorAgent 接收用户消息
+用户消息 --> MessageBus --> Scheduler
     |
-    ├── 意图分析：判断任务类型和所需 Agent
+    ├── 1. 意图分析（LLM 驱动）
+    │     └── 识别任务类型 + 所需子 Agent
     |
-    ├── 单 Agent 任务
-    │     └── 直接路由到目标 Agent → 结果返回用户
+    ├── 2. 调度决策
+    │     ├── 单 Agent 任务 --> 直接调度到目标子 Agent
+    │     └── 复合任务 --> 拆分子任务 --> 编排执行顺序 --> 逐步调度
     |
-    ├── 多 Agent 协作任务
-    │     ├── 拆分子任务 → 分派到多个 Agent
-    │     ├── 收集各 Agent 结果
-    │     └── 汇总合并 → 返回用户
+    ├── 3. 子 Agent 执行
+    │     └── 子 Agent 使用自身工具执行任务 --> 返回结果
     |
-    └── 不确定 / 通用任务
-          └── 路由到 GeneralAgent
+    ├── 4. 结果校验（Validator）
+    │     ├── 安全合规检查
+    │     ├── 输出质量验证
+    │     └── 异常情况处理（重试 / 降级 / 报错）
+    |
+    └── 5. 返回用户
+          └── 审计记录 --> 结果通过 MessageBus 回送
 ```
 
-**共享上下文**: 所有 Agent 共享同一个 `AgentContext`（含 Session 和 Memory），确保对话连贯性。每个 Agent 执行完毕后，结果会写入共享 Session，供后续 Agent 参考。
-
-### 2.4 模块划分
+### 2.5 模块划分
 
 ```
 kubemin_agent/
-├── agents/             # 多 Agent 核心
+├── control/            # 中控层
+│   ├── scheduler.py    #    调度器（意图分析 + 任务分派）
+│   ├── validator.py    #    校验器（输出校验 + 安全拦截）
+│   ├── audit.py        #    审计日志
+│   └── registry.py     #    子 Agent 注册中心
+├── agents/             # 子 Agent
 │   ├── base.py         #    BaseAgent 抽象基类
-│   ├── orchestrator.py #    OrchestratorAgent（路由与协调）
-│   ├── k8s_agent.py    #    K8sAgent（K8s 运维专家）
-│   ├── workflow_agent.py #  WorkflowAgent（工作流编排专家）
-│   ├── general_agent.py #   GeneralAgent（通用任务处理）
-│   └── registry.py     #    AgentRegistry（Agent 注册与发现）
+│   ├── k8s_agent.py    #    K8sAgent
+│   ├── workflow_agent.py #  WorkflowAgent
+│   └── general_agent.py #   GeneralAgent
 ├── agent/              # Agent 运行时基础设施
 │   ├── loop.py         #    AgentLoop（单 Agent 执行循环）
-│   ├── context.py      #    AgentContext（共享上下文管理）
-│   ├── memory.py       #    MemoryStore（持久记忆）
-│   ├── skills.py       #    SkillsLoader（技能加载器）
+│   ├── context.py      #    上下文管理
+│   ├── memory.py       #    MemoryStore
+│   ├── skills.py       #    SkillsLoader
 │   └── tools/          #    工具系统
 │       ├── base.py     #    Tool 抽象基类
-│       ├── registry.py #    ToolRegistry（工具注册表）
-│       ├── filesystem.py  # 文件操作工具
-│       ├── shell.py    #    命令执行工具
+│       ├── registry.py #    ToolRegistry
+│       ├── filesystem.py  # 文件操作
+│       ├── shell.py    #    命令执行
 │       ├── web.py      #    Web 搜索/抓取
-│       ├── kubectl.py  #    K8s 资源查询工具
-│       └── workflow.py #    工作流操作工具
+│       ├── kubectl.py  #    K8s 资源查询
+│       └── workflow.py #    工作流操作
 ├── providers/          # LLM Provider 抽象
 │   ├── base.py         #    LLMProvider / LLMResponse / ToolCallRequest
 │   └── litellm_provider.py  # LiteLLM 统一网关
@@ -150,86 +184,150 @@ kubemin_agent/
 
 ## 3. 核心模块设计
 
-### 3.1 BaseAgent（Agent 抽象基类）
+### 3.1 中控层
 
-所有 Agent 继承自 `BaseAgent`，共享统一的执行循环和接口：
+#### 3.1.1 Scheduler（调度器）
 
-```python
-class BaseAgent(ABC):
-    """所有 Agent 的抽象基类。"""
-
-    def __init__(self, provider, context, tools=None):
-        self.provider = provider
-        self.context = context          # 共享 AgentContext
-        self.tools = tools or ToolRegistry()
-
-    @property
-    @abstractmethod
-    def name(self) -> str: ...
-
-    @property
-    @abstractmethod
-    def system_prompt(self) -> str: ...
-
-    @abstractmethod
-    def get_tools(self) -> ToolRegistry: ...
-
-    async def run(self, message: str, session_key: str) -> str:
-        """执行 Agent 的 LLM + 工具调用循环"""
-```
-
-### 3.2 OrchestratorAgent（路由与协调）
-
-**职责**：
-1. 分析用户意图，判断任务类型
-2. 将任务路由到最合适的专业 Agent
-3. 处理多 Agent 协作场景（拆分子任务、汇总结果）
-4. 管理对话上下文的连贯性
+调度器是中控层的核心，负责将用户请求分派到正确的子 Agent：
 
 ```python
-class OrchestratorAgent(BaseAgent):
-    def __init__(self, provider, context, agent_registry):
-        self.agent_registry = agent_registry  # 已注册的专业 Agent
+class Scheduler:
+    def __init__(self, provider, registry, validator, audit):
+        self.provider = provider        # LLM（用于意图分析）
+        self.registry = registry        # 子 Agent 注册中心
+        self.validator = validator      # 结果校验器
+        self.audit = audit              # 审计日志
 
-    async def route(self, message: str, session_key: str) -> str:
-        """分析意图 → 选择 Agent → 执行 → 返回结果"""
+    async def dispatch(self, message: str, session_key: str) -> str:
+        """完整调度流程：意图分析 -> 选择 Agent -> 执行 -> 校验 -> 返回"""
 
-    async def multi_agent_task(self, subtasks, session_key) -> str:
-        """多 Agent 协作：拆分 → 并行/串行执行 → 汇总"""
+    async def analyze_intent(self, message: str) -> DispatchPlan:
+        """LLM 驱动的意图分析，返回调度计划"""
+
+    async def execute_plan(self, plan: DispatchPlan, session_key: str) -> str:
+        """执行调度计划（单 Agent / 多 Agent 编排）"""
 ```
 
-**路由策略**：OrchestratorAgent 通过 LLM 进行意图分类，输出目标 Agent 名称和提取的任务描述。不做复杂的规则匹配，而是依赖 LLM 的语义理解能力。
+```python
+@dataclass
+class DispatchPlan:
+    """调度计划"""
+    tasks: list[SubTask]              # 子任务列表
+    execution_mode: str = "sequential"  # sequential / parallel
 
-### 3.3 专业 Agent
+@dataclass
+class SubTask:
+    """子任务"""
+    agent_name: str                   # 目标子 Agent
+    description: str                  # 任务描述
+    depends_on: list[str] = field(default_factory=list)  # 依赖的前置任务
+```
 
-**K8sAgent**：
-- 系统提示词：K8s 运维专家角色
-- 专属工具：`kubectl`（只读查询）、`kubemin_api`（平台 API）
-- 安全约束：Namespace 隔离、只读限制、审计日志
+#### 3.1.2 Validator（校验器）
 
-**WorkflowAgent**：
-- 系统提示词：KubeMin Workflow 编排专家角色
-- 专属工具：`workflow_crud`（创建/读取/更新）、`workflow_validate`（校验）
-- 能力：生成 Workflow YAML、优化步骤编排、分析执行失败原因
+校验器在子 Agent 执行后对结果进行校验：
 
-**GeneralAgent**：
-- 系统提示词：通用助手角色
-- 专属工具：`filesystem`、`shell`、`web_search`、`web_fetch`
-- 兜底 Agent：处理不属于其他 Agent 专长的任务
+```python
+class Validator:
+    async def validate(self, agent_name: str, result: str, context: dict) -> ValidationResult:
+        """校验子 Agent 的输出"""
 
-### 3.4 AgentRegistry（Agent 注册与发现）
+    def check_safety(self, result: str) -> bool:
+        """安全合规检查"""
+
+    def check_quality(self, result: str) -> bool:
+        """输出质量验证（非空、格式正确等）"""
+```
+
+#### 3.1.3 AgentRegistry（注册中心）
 
 ```python
 class AgentRegistry:
-    def register(self, agent: BaseAgent) -> None: ...
-    def get(self, name: str) -> BaseAgent | None: ...
-    def list_agents(self) -> list[dict]: ...
-        # 返回 [{name, description, tools}] 供 Orchestrator 路由参考
+    def register(self, agent: BaseAgent) -> None:
+        """注册子 Agent"""
+
+    def unregister(self, name: str) -> None:
+        """注销子 Agent"""
+
+    def get(self, name: str) -> BaseAgent | None:
+        """获取子 Agent"""
+
+    def list_agents(self) -> list[AgentInfo]:
+        """列出所有子 Agent 及其能力描述（供调度器路由参考）"""
+
+    def health_check(self) -> dict[str, str]:
+        """检查所有子 Agent 的健康状态"""
 ```
 
-### 3.5 Tool 系统
+#### 3.1.4 AuditLog（审计日志）
 
-**Tool 抽象基类**（不变）：
+```python
+class AuditLog:
+    def log_dispatch(self, session_key, message, plan: DispatchPlan): ...
+    def log_execution(self, session_key, agent_name, result, duration): ...
+    def log_validation(self, session_key, agent_name, validation_result): ...
+```
+
+### 3.2 BaseAgent（子 Agent 基类）
+
+所有子 Agent 继承自 `BaseAgent`，由中控层统一管理：
+
+```python
+class BaseAgent(ABC):
+    """子 Agent 抽象基类。"""
+
+    def __init__(self, provider, context):
+        self.provider = provider
+        self.context = context
+        self.tools = ToolRegistry()
+        self._register_tools()
+
+    @property
+    @abstractmethod
+    def name(self) -> str:
+        """子 Agent 标识"""
+
+    @property
+    @abstractmethod
+    def description(self) -> str:
+        """能力描述（供调度器路由时参考）"""
+
+    @property
+    @abstractmethod
+    def system_prompt(self) -> str:
+        """专属系统提示词"""
+
+    @abstractmethod
+    def _register_tools(self) -> None:
+        """注册自身专属工具"""
+
+    async def run(self, message: str, session_key: str) -> str:
+        """执行 LLM + 工具调用循环（由中控层调用）"""
+```
+
+### 3.3 子 Agent 实例
+
+**K8sAgent**:
+- `description`: "处理 Kubernetes 集群运维任务，包括资源查询、状态诊断、日志查看"
+- `system_prompt`: K8s 运维专家角色
+- 工具: `kubectl`（只读）, `kubemin_api`
+- 安全: Namespace 隔离 + 只读限制 + 审计
+
+**WorkflowAgent**:
+- `description`: "处理 KubeMin 工作流相关任务，包括生成、优化、校验和执行监控"
+- `system_prompt`: 工作流编排专家角色
+- 工具: `workflow_crud`, `workflow_validate`
+- 能力: 生成 YAML、优化编排、分析失败原因
+
+**GeneralAgent**:
+- `description`: "处理通用任务，包括文件操作、命令执行、Web 搜索和通用问答"
+- `system_prompt`: 通用助手角色
+- 工具: `filesystem`, `shell`, `web_search`, `web_fetch`
+- 兜底: 处理不属于其他子 Agent 专长的任务
+
+### 3.4 Tool 系统
+
+与之前设计保持一致，每个子 Agent 拥有独立的 `ToolRegistry`，工具按职责隔离：
 
 ```python
 class Tool(ABC):
@@ -245,35 +343,26 @@ class Tool(ABC):
     @abstractmethod
     async def execute(self, **kwargs) -> str: ...
     def validate_params(self, params) -> list[str]: ...
-    def to_schema(self) -> dict: ...  # OpenAI function 格式
+    def to_schema(self) -> dict: ...
 ```
 
-**各 Agent 工具分配**：
-
-| Agent | 工具集 | 安全约束 |
-|-------|--------|----------|
-| K8sAgent | `kubectl`, `kubemin_api` | 只读 + Namespace 限制 + RBAC |
-| WorkflowAgent | `workflow_crud`, `workflow_validate` | 操作审计日志 |
+| 子 Agent | 工具集 | 中控层校验规则 |
+|----------|--------|---------------|
+| K8sAgent | `kubectl`, `kubemin_api` | 只读命令 + Namespace 白名单 |
+| WorkflowAgent | `workflow_crud`, `workflow_validate` | 操作审计 |
 | GeneralAgent | `filesystem`, `shell`, `web_search`, `web_fetch` | 工作区限制 + 危险命令拦截 |
-| OrchestratorAgent | `route_to_agent` | 仅路由，不直接执行业务工具 |
 
-### 3.6 共享基础设施
+### 3.5 共享基础设施
 
-**LLMProvider**：通过 LiteLLM 统一网关，所有 Agent 共享同一个 Provider 实例。
+**LLMProvider**: LiteLLM 统一网关，中控层和子 Agent 共享同一个 Provider 实例。
 
-**AgentContext**：共享上下文管理，包含：
-- SessionManager：JSONL 持久化，key = `channel:chat_id`
-- MemoryStore：长期记忆 + 每日记忆
-- SkillsLoader：技能发现与加载
-- 各 Agent 执行结果写入同一 Session，保持对话连贯
-
-**MessageBus**：解耦 Channel 与 Agent，Channel 只负责接入和格式转换。
+**Session / Memory**: 所有子 Agent 的执行结果写入同一 Session，由中控层统一管理。
 
 **配置模型**（Pydantic Settings）：
 
 ```python
 class Config(BaseSettings):
-    agents: AgentsConfig          # 各 Agent 的 model、temperature 等
+    agents: AgentsConfig          # 各子 Agent 的 model、temperature 等
     providers: ProvidersConfig    # LLM provider 的 apiKey/apiBase
     channels: ChannelsConfig      # 通道开关与凭证
     tools: ToolsConfig            # 工具特定配置
