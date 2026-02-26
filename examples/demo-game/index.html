@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Coin Flip Game - Demo</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Segoe UI', sans-serif; background: #1a1a2e; color: #eee; display: flex; justify-content: center; padding-top: 40px; min-height: 100vh; }
+    .game { text-align: center; max-width: 400px; width: 100%; }
+    h1 { font-size: 1.8rem; margin-bottom: 8px; color: #e94560; }
+    .subtitle { color: #888; margin-bottom: 24px; }
+    .wallet { background: #16213e; border-radius: 12px; padding: 16px; margin-bottom: 24px; }
+    .wallet-label { font-size: 0.85rem; color: #888; }
+    .wallet-amount { font-size: 2rem; font-weight: bold; color: #ffd700; }
+    .coin { width: 100px; height: 100px; border-radius: 50%; background: linear-gradient(135deg, #ffd700, #ffaa00); display: flex; align-items: center; justify-content: center; font-size: 2.5rem; margin: 0 auto 16px; cursor: pointer; transition: transform 0.6s; box-shadow: 0 4px 15px rgba(255, 215, 0, 0.3); }
+    .coin.flipping { animation: flip 0.6s ease-in-out; }
+    @keyframes flip { 0% { transform: rotateY(0); } 50% { transform: rotateY(180deg); } 100% { transform: rotateY(360deg); } }
+    .bet-section { margin-bottom: 16px; }
+    .bet-label { font-size: 0.9rem; color: #888; margin-bottom: 8px; }
+    .choice-btns { display: flex; gap: 12px; justify-content: center; margin-bottom: 16px; }
+    .choice-btns button { padding: 10px 24px; border: 2px solid #e94560; background: transparent; color: #e94560; border-radius: 8px; cursor: pointer; font-size: 1rem; transition: all 0.2s; }
+    .choice-btns button:hover, .choice-btns button.active { background: #e94560; color: #fff; }
+    .flip-btn { padding: 12px 36px; background: #e94560; color: white; border: none; border-radius: 8px; font-size: 1.1rem; cursor: pointer; transition: background 0.2s; }
+    .flip-btn:hover { background: #c73e55; }
+    .flip-btn:disabled { background: #555; cursor: not-allowed; }
+    .result { margin-top: 20px; padding: 16px; border-radius: 12px; min-height: 60px; }
+    .result.win { background: rgba(0, 200, 80, 0.15); border: 1px solid #00c850; }
+    .result.lose { background: rgba(233, 69, 96, 0.15); border: 1px solid #e94560; }
+    .history { margin-top: 24px; text-align: left; }
+    .history h3 { font-size: 0.9rem; color: #888; margin-bottom: 8px; }
+    .history-list { max-height: 120px; overflow-y: auto; font-size: 0.85rem; }
+    .history-item { padding: 4px 0; border-bottom: 1px solid #333; }
+  </style>
+</head>
+<body>
+  <div class="game">
+    <h1>Coin Flip Game</h1>
+    <p class="subtitle">Guess heads or tails - win 10 coins!</p>
+
+    <div class="wallet">
+      <div class="wallet-label">Your Coins</div>
+      <div class="wallet-amount" id="coins">100</div>
+    </div>
+
+    <div class="coin" id="coin">🪙</div>
+
+    <div class="bet-section">
+      <div class="bet-label">Bet: 10 coins per flip</div>
+      <div class="choice-btns">
+        <button id="btn-heads" onclick="choose('heads')">Heads</button>
+        <button id="btn-tails" onclick="choose('tails')">Tails</button>
+      </div>
+      <button class="flip-btn" id="flip-btn" onclick="flip()" disabled>Flip Coin</button>
+    </div>
+
+    <div class="result" id="result"></div>
+
+    <div class="history">
+      <h3>History</h3>
+      <div class="history-list" id="history"></div>
+    </div>
+  </div>
+
+  <script>
+    let coins = 100;
+    let choice = null;
+    let flipping = false;
+
+    function choose(side) {
+      choice = side;
+      document.getElementById('btn-heads').classList.toggle('active', side === 'heads');
+      document.getElementById('btn-tails').classList.toggle('active', side === 'tails');
+      document.getElementById('flip-btn').disabled = false;
+    }
+
+    function flip() {
+      if (!choice || flipping || coins < 10) return;
+      flipping = true;
+
+      const coinEl = document.getElementById('coin');
+      const resultEl = document.getElementById('result');
+      const flipBtn = document.getElementById('flip-btn');
+
+      flipBtn.disabled = true;
+      coinEl.classList.add('flipping');
+      resultEl.className = 'result';
+      resultEl.textContent = 'Flipping...';
+
+      coins -= 10;
+      updateCoins();
+
+      setTimeout(() => {
+        const outcome = Math.random() < 0.5 ? 'heads' : 'tails';
+        const won = outcome === choice;
+
+        coinEl.classList.remove('flipping');
+        coinEl.textContent = outcome === 'heads' ? '👑' : '🦅';
+
+        if (won) {
+          coins += 20;
+          updateCoins();
+          resultEl.className = 'result win';
+          resultEl.textContent = `${outcome.toUpperCase()} — You win! +10 coins`;
+        } else {
+          resultEl.className = 'result lose';
+          resultEl.textContent = `${outcome.toUpperCase()} — You lose! -10 coins`;
+        }
+
+        addHistory(choice, outcome, won);
+
+        flipping = false;
+        flipBtn.disabled = coins < 10;
+        choice = null;
+        document.getElementById('btn-heads').classList.remove('active');
+        document.getElementById('btn-tails').classList.remove('active');
+
+        if (coins < 10) {
+          resultEl.textContent += ' | Game Over — No more coins!';
+        }
+      }, 700);
+    }
+
+    function updateCoins() {
+      document.getElementById('coins').textContent = coins;
+    }
+
+    function addHistory(pick, outcome, won) {
+      const el = document.getElementById('history');
+      const item = document.createElement('div');
+      item.className = 'history-item';
+      item.textContent = `Picked ${pick}, got ${outcome} — ${won ? 'WIN +10' : 'LOSE -10'} (Balance: ${coins})`;
+      el.insertBefore(item, el.firstChild);
+    }
+  </script>
+</body>
+</html>
