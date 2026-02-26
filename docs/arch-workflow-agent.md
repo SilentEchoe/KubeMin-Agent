@@ -30,6 +30,7 @@ WorkflowAgent (extends BaseAgent)
 
 | 功能 | 状态 | 说明 |
 |------|------|------|
+| 中控调度接入 | 已实现 | 通过 ControlPlaneRuntime 注册到 AgentRegistry, 由 Scheduler 调度 |
 | 自然语言生成 Workflow YAML | 已实现 | 通过 LLM 将用户描述转为 YAML |
 | 步骤依赖优化 | 已实现 | 自动分析和优化步骤执行顺序 |
 | YAML 校验 | 规划中 | 结构性校验 Workflow 配置 |
@@ -62,4 +63,5 @@ WorkflowAgent (extends BaseAgent)
 
 | 日期 | 变更 | 原因 |
 |------|------|------|
+| 2026-02-26 | 接入中控运行时, 默认经 Scheduler 调度 | 落地 Agent Control Plane 主链路 |
 | 2025-02 | 初始设计, 定义 YAML 生成和 Trait 配置能力 | 项目初始化 |

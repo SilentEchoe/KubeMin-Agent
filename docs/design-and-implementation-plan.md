@@ -4,6 +4,44 @@
 
 ---
 
+## 0. 实现状态更新（2026-02-26）
+
+本次更新聚焦“中控链路落地”，将运行入口从单一 `AgentLoop` 默认模式升级为可直接使用控制面调度链路。
+
+### 0.1 当前实现范围
+
+- 新增 `ControlPlaneRuntime` 作为运行时装配层，统一组装：
+  - `AgentRegistry`
+  - `Scheduler`
+  - `Validator`
+  - `AuditLog`
+  - `SessionManager`
+- CLI `agent` 与 `gateway` 默认走中控调度链路：
+  - `user message -> Scheduler -> SubAgent -> Validator -> Audit -> response`
+- `Scheduler` 支持多任务编排：
+  - `sequential` 顺序执行
+  - `parallel` 并发执行
+  - `depends_on` 依赖约束（无环 DAG）
+- `Validator` 升级为分层校验能力：
+  - 安全模式拦截
+  - 输出质量校验
+  - 基础敏感信息脱敏（API key / token / bearer）
+  - `ValidationResult` 增加 `severity / policy_id / redactions`
+- `AuditLog` 增加 `request_id` 贯穿，补充工具调用日志接口
+
+### 0.2 与原计划差异说明
+
+- `AgentLoop` 保留为兼容能力，不再作为默认中控执行主链路。
+- `GeneralAgent/K8sAgent/WorkflowAgent` 的专属工具仍为分阶段建设，当前优先完成调度与管控主链路。
+
+### 0.3 下一步（与 M3-M6 对齐）
+
+- 完成通用文件/Shell/K8s 只读工具的最小闭环
+- 增加端到端测试与调度编排测试
+- 打通 Cron / Heartbeat 到统一控制面入口
+
+---
+
 ## 1. 项目定位与目标
 
 **KubeMin-Agent** 是 KubeMin 体系的 **Agent 中台中控**（Agent Control Plane）。它不是某一个具体的 Agent，而是整个 Agent 生态系统的管理层和运行底座，负责：
@@ -134,6 +172,7 @@ kubemin_agent/
 │   ├── scheduler.py    #    调度器（意图分析 + 任务分派）
 │   ├── validator.py    #    校验器（输出校验 + 安全拦截）
 │   ├── audit.py        #    审计日志
+│   ├── runtime.py      #    运行时装配（Registry/Scheduler/Validator/Audit 组装）
 │   └── registry.py     #    子 Agent 注册中心
 ├── agents/             # 子 Agent
 │   ├── base.py         #    BaseAgent 抽象基类

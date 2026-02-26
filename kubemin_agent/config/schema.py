@@ -96,6 +96,21 @@ class KubeMinConfig(BaseModel):
     default_namespace: str = "default"
 
 
+class ControlConfig(BaseModel):
+    """Control plane runtime configuration."""
+
+    enabled: bool = True
+    fallback_mode: str = "agent_loop"
+    max_parallelism: int = 4
+    fail_fast: bool = False
+
+
+class ValidatorConfig(BaseModel):
+    """Validator configuration."""
+
+    policy_level: str = "standard"
+
+
 class Config(BaseSettings):
     """Root configuration for kubemin-agent."""
 
@@ -105,6 +120,8 @@ class Config(BaseSettings):
     gateway: GatewayConfig = Field(default_factory=GatewayConfig)
     tools: ToolsConfig = Field(default_factory=ToolsConfig)
     kubemin: KubeMinConfig = Field(default_factory=KubeMinConfig)
+    control: ControlConfig = Field(default_factory=ControlConfig)
+    validator: ValidatorConfig = Field(default_factory=ValidatorConfig)
 
     @property
     def workspace_path(self) -> Path:

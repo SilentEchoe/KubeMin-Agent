@@ -5,11 +5,10 @@ from pathlib import Path
 from typing import Optional
 
 import typer
-from loguru import logger
 from rich.console import Console
 from rich.table import Table
 
-from kubemin_agent.config import load_config, save_default_config, ensure_workspace
+from kubemin_agent.config import ensure_workspace, load_config, save_default_config
 
 app = typer.Typer(
     name="kubemin-agent",
@@ -48,15 +47,41 @@ def agent(
         console.print("[red]Error:[/red] No API key configured. Run 'kubemin-agent onboard' first.")
         raise typer.Exit(1)
 
-    from kubemin_agent.providers.litellm_provider import LiteLLMProvider
-    from kubemin_agent.bus.queue import MessageBus
     from kubemin_agent.agent.loop import AgentLoop
+    from kubemin_agent.bus.queue import MessageBus
+    from kubemin_agent.control.runtime import ControlPlaneRuntime
+    from kubemin_agent.providers.litellm_provider import LiteLLMProvider
 
     provider = LiteLLMProvider(
         api_key=api_key,
         api_base=config.get_api_base(),
         default_model=config.agents.defaults.model,
     )
+
+    if config.control.enabled:
+        runtime = ControlPlaneRuntime.from_config(config, provider, workspace)
+
+        if message:
+            response = asyncio.run(runtime.handle_message("cli", "direct", message))
+            console.print(response)
+            return
+
+        console.print("[bold]KubeMin-Agent[/bold] control-plane interactive mode. Type 'exit' to quit.\n")
+        while True:
+            try:
+                user_input = console.input("[bold blue]> [/bold blue]")
+                if user_input.strip().lower() in ("exit", "quit"):
+                    break
+                if not user_input.strip():
+                    continue
+                response = asyncio.run(runtime.handle_message("cli", "interactive", user_input))
+                console.print(f"\n{response}\n")
+            except (KeyboardInterrupt, EOFError):
+                break
+        console.print("\n[dim]Goodbye![/dim]")
+        return
+
+    # Backward-compatibility path: legacy AgentLoop mode.
     bus = MessageBus()
     loop = AgentLoop(
         bus=bus,
@@ -67,12 +92,10 @@ def agent(
     )
 
     if message:
-        # Single message mode
         response = asyncio.run(loop.process_direct(message))
         console.print(response)
     else:
-        # Interactive mode
-        console.print("[bold]KubeMin-Agent[/bold] interactive mode. Type 'exit' to quit.\n")
+        console.print("[bold]KubeMin-Agent[/bold] legacy interactive mode. Type 'exit' to quit.\n")
         while True:
             try:
                 user_input = console.input("[bold blue]> [/bold blue]")
@@ -108,6 +131,11 @@ def status(
     table.add_row("API Key", f"...{api_key[-8:]}" if api_key else "[red]Not configured[/red]")
     table.add_row("API Base", config.get_api_base() or "Default")
 
+    table.add_row("Control Plane", "Enabled" if config.control.enabled else "Disabled")
+    table.add_row("Control Max Parallel", str(config.control.max_parallelism))
+    table.add_row("Control Fail Fast", str(config.control.fail_fast))
+    table.add_row("Validator Policy", config.validator.policy_level)
+
     table.add_row("Telegram", "Enabled" if config.channels.telegram.enabled else "Disabled")
     table.add_row("KubeMin API", config.kubemin.api_base or "[dim]Not configured[/dim]")
 
@@ -127,28 +155,45 @@ def gateway(
         console.print("[red]Error:[/red] No API key configured.")
         raise typer.Exit(1)
 
-    from kubemin_agent.providers.litellm_provider import LiteLLMProvider
-    from kubemin_agent.bus.queue import MessageBus
     from kubemin_agent.agent.loop import AgentLoop
+    from kubemin_agent.bus.queue import MessageBus
     from kubemin_agent.channels.manager import ChannelManager
+    from kubemin_agent.control.runtime import ControlPlaneRuntime
+    from kubemin_agent.providers.litellm_provider import LiteLLMProvider
 
-    async def _run_gateway():
+    async def _run_gateway() -> None:
         provider = LiteLLMProvider(
             api_key=api_key,
             api_base=config.get_api_base(),
             default_model=config.agents.defaults.model,
         )
         bus = MessageBus()
+        channel_manager = ChannelManager(bus)
+
+        console.print("[bold green]Gateway starting...[/bold green]")
+
+        if config.control.enabled:
+            runtime = ControlPlaneRuntime.from_config(config, provider, workspace)
+            tasks = [
+                asyncio.create_task(runtime.run_bus_loop(bus)),
+                asyncio.create_task(bus.dispatch_outbound()),
+                asyncio.create_task(channel_manager.start_all()),
+            ]
+            try:
+                await asyncio.gather(*tasks)
+            except KeyboardInterrupt:
+                runtime.stop()
+                bus.stop()
+                await channel_manager.stop_all()
+            return
+
+        # Backward-compatibility path: legacy AgentLoop gateway.
         agent_loop = AgentLoop(
             bus=bus,
             provider=provider,
             workspace=workspace,
             model=config.agents.defaults.model,
         )
-        channel_manager = ChannelManager(bus)
-
-        console.print("[bold green]Gateway starting...[/bold green]")
-
         tasks = [
             asyncio.create_task(agent_loop.run()),
             asyncio.create_task(bus.dispatch_outbound()),

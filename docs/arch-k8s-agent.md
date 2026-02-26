@@ -30,6 +30,7 @@ K8sAgent (extends BaseAgent)
 
 | 功能 | 状态 | 说明 |
 |------|------|------|
+| 中控调度接入 | 已实现 | 通过 ControlPlaneRuntime 注册到 AgentRegistry, 由 Scheduler 路由 |
 | 集群资源查询 | 规划中 | 查询 Pod/Deployment/Service 等资源状态 |
 | 容器日志查看 | 规划中 | 按 Pod/Container 查看日志 |
 | 故障诊断 | 规划中 | 分析 Pod 状态异常、重启原因等 |
@@ -61,4 +62,5 @@ K8sAgent (extends BaseAgent)
 
 | 日期 | 变更 | 原因 |
 |------|------|------|
+| 2026-02-26 | 接入中控运行时, 默认经 Scheduler 调度 | 落地 Agent Control Plane 主链路 |
 | 2025-02 | 初始设计, 定义只读约束和 system prompt | 项目初始化 |

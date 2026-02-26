@@ -28,6 +28,7 @@ class GameAuditAgent(BaseAgent):
         self,
         provider: LLMProvider,
         sessions: SessionManager,
+        audit=None,
         workspace: Path | None = None,
         headless: bool = True,
         game_url: str | None = None,
@@ -36,7 +37,7 @@ class GameAuditAgent(BaseAgent):
         self._workspace.mkdir(parents=True, exist_ok=True)
         self._mcp = MCPClient(headless=headless)
         self._game_url = game_url or os.environ.get("GAME_TEST_URL")
-        super().__init__(provider, sessions)
+        super().__init__(provider, sessions, audit=audit)
 
     @property
     def name(self) -> str:

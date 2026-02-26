@@ -31,6 +31,7 @@ GeneralAgent (extends BaseAgent)
 
 | 功能 | 状态 | 说明 |
 |------|------|------|
+| 中控调度接入 | 已实现 | 通过 ControlPlaneRuntime 注册到 AgentRegistry, 由 Scheduler 调度 |
 | 文件读写 | 规划中 | workspace 内文件的 CRUD |
 | Shell 命令执行 | 规划中 | 安全的命令行操作 |
 | Web 搜索 | 规划中 | 搜索引擎查询和网页抓取 |
@@ -63,4 +64,5 @@ GeneralAgent (extends BaseAgent)
 
 | 日期 | 变更 | 原因 |
 |------|------|------|
+| 2026-02-26 | 接入中控运行时, 由 Scheduler 默认调度执行 | 落地 Agent Control Plane 主链路 |
 | 2025-02 | 初始设计, 定义 fallback 定位和安全约束 | 项目初始化 |

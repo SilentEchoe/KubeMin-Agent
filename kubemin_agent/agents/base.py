@@ -1,6 +1,9 @@
 """Base class for all managed sub-agents."""
 
+from __future__ import annotations
+
 import json
+import time
 from abc import ABC, abstractmethod
 from typing import Any
 
@@ -25,9 +28,11 @@ class BaseAgent(ABC):
         self,
         provider: LLMProvider,
         sessions: SessionManager,
+        audit: Any | None = None,
     ) -> None:
         self.provider = provider
         self.sessions = sessions
+        self._audit = audit
         self.tools = ToolRegistry()
         self._register_tools()
 
@@ -54,7 +59,7 @@ class BaseAgent(ABC):
         """Register this agent's domain-specific tools."""
         pass
 
-    async def run(self, message: str, session_key: str) -> str:
+    async def run(self, message: str, session_key: str, request_id: str = "") -> str:
         """
         Execute the LLM + tool call loop.
 
@@ -63,20 +68,17 @@ class BaseAgent(ABC):
         Args:
             message: Task description from the Scheduler.
             session_key: Session identifier.
+            request_id: Optional correlation ID for tracing.
 
         Returns:
             The agent's response.
         """
-        # Build messages
         history = self.sessions.get_history(session_key)
-        messages: list[dict[str, Any]] = [
-            {"role": "system", "content": self.system_prompt},
-        ]
-        messages.extend(history[-10:])  # Include recent context
+        messages: list[dict[str, Any]] = [{"role": "system", "content": self.system_prompt}]
+        messages.extend(history[-10:])
         messages.append({"role": "user", "content": message})
 
-        # Tool call loop
-        for iteration in range(self.MAX_ITERATIONS):
+        for _ in range(self.MAX_ITERATIONS):
             tool_defs = self.tools.get_definitions() if len(self.tools) > 0 else None
 
             response = await self.provider.chat(
@@ -87,32 +89,75 @@ class BaseAgent(ABC):
             if not response.has_tool_calls:
                 return response.content or ""
 
-            # Add assistant message with tool calls
-            messages.append({
-                "role": "assistant",
-                "content": response.content or "",
-                "tool_calls": [
-                    {
-                        "id": tc.id,
-                        "type": "function",
-                        "function": {
-                            "name": tc.name,
-                            "arguments": json.dumps(tc.arguments),
-                        },
-                    }
-                    for tc in response.tool_calls
-                ],
-            })
+            messages.append(
+                {
+                    "role": "assistant",
+                    "content": response.content or "",
+                    "tool_calls": [
+                        {
+                            "id": tc.id,
+                            "type": "function",
+                            "function": {
+                                "name": tc.name,
+                                "arguments": json.dumps(tc.arguments),
+                            },
+                        }
+                        for tc in response.tool_calls
+                    ],
+                }
+            )
 
-            # Execute tool calls
             for tc in response.tool_calls:
                 logger.debug(f"[{self.name}] Executing tool: {tc.name}")
+                start_time = time.monotonic()
                 result = await self.tools.execute(tc.name, tc.arguments)
-                messages.append({
-                    "role": "tool",
-                    "tool_call_id": tc.id,
-                    "name": tc.name,
-                    "content": result,
-                })
+                duration_ms = (time.monotonic() - start_time) * 1000
+                success = not result.startswith("Error")
+                self._log_tool_call(
+                    session_key=session_key,
+                    tool_name=tc.name,
+                    params=tc.arguments,
+                    result_preview=result,
+                    duration_ms=duration_ms,
+                    success=success,
+                    request_id=request_id,
+                )
+
+                messages.append(
+                    {
+                        "role": "tool",
+                        "tool_call_id": tc.id,
+                        "name": tc.name,
+                        "content": result,
+                    }
+                )
 
         return "Reached maximum tool iterations. Please try a simpler request."
+
+    def _log_tool_call(
+        self,
+        session_key: str,
+        tool_name: str,
+        params: dict[str, Any],
+        result_preview: str,
+        duration_ms: float,
+        success: bool,
+        request_id: str,
+    ) -> None:
+        """Write tool call trace into audit log when available."""
+        if not self._audit:
+            return
+
+        try:
+            self._audit.log_tool_call(
+                session_key=session_key,
+                agent_name=self.name,
+                tool_name=tool_name,
+                params=params,
+                result_preview=result_preview,
+                duration_ms=duration_ms,
+                success=success,
+                request_id=request_id,
+            )
+        except Exception as e:  # noqa: BLE001
+            logger.warning(f"Failed to write tool audit log: {e}")
