@@ -36,6 +36,42 @@ Chrome DevTools MCP 通过 `npx` 自动下载，无需手动安装。
 pip install -e ".[game-audit-service]"
 ```
 
+### Docker 部署
+
+```bash
+# 构建镜像
+docker build -t game-audit-agent .
+
+# 运行 (HTTP 服务模式)
+docker run -d \
+  -e GAME_TEST_URL=https://game.example.com \
+  -e LLM_API_KEY=$LLM_API_KEY \
+  -v ./guides:/data/guides:ro \
+  -p 8080:8080 \
+  --shm-size=512m \
+  game-audit-agent
+
+# 运行 (一次性审核)
+docker run --rm \
+  -e GAME_TEST_URL=https://game.example.com \
+  -e LLM_API_KEY=$LLM_API_KEY \
+  -v ./guides:/data/guides:ro \
+  --shm-size=512m \
+  game-audit-agent \
+  test --pdf /data/guides/guide.pdf
+```
+
+**Kubernetes 部署**:
+
+K8s 部署清单位于 `kubemin_agent/skills/game-audit-agent.yaml`, 包含 Deployment、Service、ConfigMap、Secret 和 PVC:
+
+```bash
+# 修改 ConfigMap/Secret 中的配置后部署
+kubectl apply -f kubemin_agent/skills/game-audit-agent.yaml
+```
+
+> **注意**: `--shm-size=512m` (Docker) 或 K8s 中的 `/dev/shm` emptyDir (Memory) 是必须的，防止 Chrome 因共享内存不足而崩溃。容器内会自动检测并启用 `--no-sandbox` 模式。
+
 ## 使用方式
 
 ### 环境变量

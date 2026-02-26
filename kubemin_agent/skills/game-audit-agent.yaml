@@ -1,0 +1,129 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: game-audit-agent
+  labels:
+    app: game-audit-agent
+    component: agent
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: game-audit-agent
+  template:
+    metadata:
+      labels:
+        app: game-audit-agent
+        component: agent
+    spec:
+      containers:
+        - name: game-audit-agent
+          image: game-audit-agent:latest
+          ports:
+            - containerPort: 8080
+              protocol: TCP
+          env:
+            - name: GAME_TEST_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: game-audit-config
+                  key: game-url
+            - name: LLM_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: game-audit-secret
+                  key: llm-api-key
+            - name: LLM_API_BASE
+              valueFrom:
+                configMapKeyRef:
+                  name: game-audit-config
+                  key: llm-api-base
+                  optional: true
+          volumeMounts:
+            - name: workspace
+              mountPath: /data/workspace
+            - name: guides
+              mountPath: /data/guides
+              readOnly: true
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "512Mi"
+            limits:
+              cpu: "2"
+              memory: "2Gi"
+          # Chrome needs extra shared memory
+          volumeMounts:
+            - name: dshm
+              mountPath: /dev/shm
+            - name: workspace
+              mountPath: /data/workspace
+            - name: guides
+              mountPath: /data/guides
+              readOnly: true
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 10
+      volumes:
+        - name: dshm
+          emptyDir:
+            medium: Memory
+            sizeLimit: 512Mi
+        - name: workspace
+          persistentVolumeClaim:
+            claimName: game-audit-workspace
+        - name: guides
+          configMap:
+            name: game-audit-guides
+            optional: true
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: game-audit-agent
+  labels:
+    app: game-audit-agent
+spec:
+  selector:
+    app: game-audit-agent
+  ports:
+    - port: 8080
+      targetPort: 8080
+      protocol: TCP
+  type: ClusterIP
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: game-audit-config
+data:
+  game-url: "https://game.example.com"
+  llm-api-base: ""
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: game-audit-secret
+type: Opaque
+stringData:
+  llm-api-key: "your-llm-api-key"
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: game-audit-workspace
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi

@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import shutil
+from pathlib import Path
 from typing import Any
 
 from loguru import logger
@@ -17,13 +19,23 @@ class MCPClient:
     and communicates via JSON-RPC over stdin/stdout.
     """
 
-    def __init__(self, headless: bool = True) -> None:
+    def __init__(self, headless: bool = True, no_sandbox: bool | None = None) -> None:
         self._headless = headless
+        self._no_sandbox = no_sandbox if no_sandbox is not None else self._detect_container()
         self._process: asyncio.subprocess.Process | None = None
         self._request_id = 0
         self._pending: dict[int, asyncio.Future] = {}
         self._reader_task: asyncio.Task | None = None
         self._initialized = False
+
+    @staticmethod
+    def _detect_container() -> bool:
+        """Auto-detect if running inside a Docker / container environment."""
+        if os.environ.get("CONTAINER"):
+            return True
+        if Path("/.dockerenv").exists():
+            return True
+        return False
 
     async def start(self) -> None:
         """Start the Chrome DevTools MCP server subprocess."""
@@ -39,6 +51,8 @@ class MCPClient:
         args = [npx_path, "-y", "chrome-devtools-mcp@latest"]
         if self._headless:
             args.append("--headless")
+        if self._no_sandbox:
+            args.append("--no-sandbox")
 
         logger.info(f"Starting Chrome DevTools MCP: {' '.join(args)}")
 
