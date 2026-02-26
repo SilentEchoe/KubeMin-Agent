@@ -7,7 +7,6 @@ from typing import Any
 from kubemin_agent.agent.tools.base import Tool
 from kubemin_agent.agent.tools.mcp_client import MCPClient
 
-
 MAX_CONTENT_LENGTH = 4000
 
 

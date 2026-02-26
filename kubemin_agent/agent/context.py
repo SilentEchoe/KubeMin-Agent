@@ -95,7 +95,7 @@ class ContextBuilder:
         import asyncio
 
         try:
-            loop = asyncio.get_running_loop()
+            asyncio.get_running_loop()
             # Already in an async context -- schedule as a task
             # Fall back to empty; async callers should use memory.get_context() directly
             return ""

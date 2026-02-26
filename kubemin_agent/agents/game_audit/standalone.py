@@ -10,11 +10,9 @@ Usage:
 """
 
 import asyncio
-import sys
 from pathlib import Path
 
 import typer
-from loguru import logger
 from rich.console import Console
 
 app = typer.Typer(
@@ -32,9 +30,9 @@ def _create_agent(
     game_url: str | None = None,
 ):
     """Create a GameAuditAgent instance."""
+    from kubemin_agent.agents.game_audit_agent import GameAuditAgent
     from kubemin_agent.providers.litellm_provider import LiteLLMProvider
     from kubemin_agent.session.manager import SessionManager
-    from kubemin_agent.agents.game_audit_agent import GameAuditAgent
 
     provider = LiteLLMProvider(
         api_key=api_key,
@@ -113,7 +111,7 @@ def serve(
     """Start GameAuditAgent as an HTTP service."""
     try:
         import uvicorn
-        from fastapi import FastAPI, UploadFile, File, Form
+        from fastapi import FastAPI, File, Form, UploadFile
         from fastapi.responses import JSONResponse
     except ImportError:
         console.print("[red]Error:[/red] fastapi and uvicorn are required for serve mode.")

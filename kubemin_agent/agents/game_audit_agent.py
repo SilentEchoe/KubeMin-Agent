@@ -3,12 +3,12 @@
 import os
 from pathlib import Path
 
-from kubemin_agent.agents.base import BaseAgent
+from kubemin_agent.agent.tools.browser import BrowserTool
+from kubemin_agent.agent.tools.content_audit import ContentAuditTool
 from kubemin_agent.agent.tools.mcp_client import MCPClient
 from kubemin_agent.agent.tools.pdf_reader import PDFReaderTool
-from kubemin_agent.agent.tools.browser import BrowserTool
 from kubemin_agent.agent.tools.screenshot import ScreenshotTool
-from kubemin_agent.agent.tools.content_audit import ContentAuditTool
+from kubemin_agent.agents.base import BaseAgent
 from kubemin_agent.providers.base import LLMProvider
 from kubemin_agent.session.manager import SessionManager
 

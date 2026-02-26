@@ -7,7 +7,6 @@ from dataclasses import dataclass, field
 
 from loguru import logger
 
-
 # Dangerous command patterns to intercept
 DANGEROUS_PATTERNS = [
     r"\brm\s+-rf\b",
