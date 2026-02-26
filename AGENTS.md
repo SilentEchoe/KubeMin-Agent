@@ -26,6 +26,39 @@ KubeMin-Agent (Control Plane)
 - **Sub-agent isolation**: Each sub-agent has its own ToolRegistry, system prompt, and security constraints. Tools are never shared across agents.
 - **LLM-driven routing**: The Scheduler uses LLM intent analysis (not rule matching) to select the target sub-agent.
 - **Shared context**: All sub-agents share one SessionManager and MemoryStore to maintain conversation coherence.
+- **Docs-first**: All requirements and technical decisions must be documented in `.md` files before implementation. Agents use `docs/` 中的 markdown 文档作为协作信息源。
+
+## Docs-First Development
+
+本项目遵循 **文档优先 (Docs-First)** 原则。所有新增需求、架构变更、技术方案必须先通过文档拟定，审批后再进入开发。
+
+### 规范
+
+1. **需求先行**: 新功能/重大变更必须先在 `docs/` 中创建或更新对应的 `.md` 文档，明确：
+   - 目标与背景
+   - 技术方案（含架构图、接口定义）
+   - 影响范围与风险评估
+   - 验证计划
+
+2. **文档驱动审批**: 技术方案文档是审批的唯一依据。文档未审批前不得开始编码实现。
+
+3. **多 Agent 协作**: 多个 Agent 之间通过 `docs/` 下的 `.md` 文档交换信息：
+   - 每个 Agent 拥有自己的文档（如 `docs/game-audit-agent.md`）
+   - Agent 间的接口约定、数据格式、调度规则均以文档形式记录
+   - Scheduler 调度决策参考 Agent 文档中的 `描述 (description)` 字段
+
+4. **文档即真相**: 当代码行为与文档描述不一致时，以文档为准，代码需要修正。
+
+5. **文档生命周期**: 文档随代码同步更新。功能变更时必须同步更新对应文档。
+
+### 文档目录结构
+
+```
+docs/
+  design-and-implementation-plan.md   -- 总体设计与实施计划
+  game-audit-agent.md                 -- GameAuditAgent 使用文档
+  <agent-name>.md                     -- 各 Agent 的使用/协作文档
+```
 
 ## Tech Stack
 

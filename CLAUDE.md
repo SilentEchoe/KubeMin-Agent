@@ -53,3 +53,5 @@ ruff check .                     # Lint
 - Tests in `tests/` using `pytest` + `pytest-asyncio`
 - No emoji in docs or comments
 - Default communication language: Chinese
+- **Docs-first**: new features/changes require a `.md` doc in `docs/` before implementation; agents coordinate via markdown documents
+
