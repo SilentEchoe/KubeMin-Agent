@@ -56,9 +56,45 @@ KubeMin-Agent (Control Plane)
 ```
 docs/
   design-and-implementation-plan.md   -- 总体设计与实施计划
+  context-engineering.md              -- 上下文工程设计方案
+  arch-k8s-agent.md                   -- K8sAgent 架构文档
+  arch-workflow-agent.md              -- WorkflowAgent 架构文档
+  arch-general-agent.md               -- GeneralAgent 架构文档
+  arch-game-audit-agent.md            -- GameAuditAgent 架构文档
   game-audit-agent.md                 -- GameAuditAgent 使用文档
   <agent-name>.md                     -- 各 Agent 的使用/协作文档
 ```
+
+### 架构文档规范
+
+每个 Agent **必须** 拥有自己的架构文档 `docs/arch-<agent-name>.md`, 遵循以下模板:
+
+```markdown
+# <AgentName> 架构文档
+
+## 设计理念
+为什么需要这个 Agent, 解决什么问题, 核心设计思想。
+
+## 架构
+类关系, 依赖关系, 数据流, 配图 (mermaid 或 ASCII)。
+
+## 功能清单
+当前已实现的功能列表, 每项标注状态 (已实现/进行中/规划中)。
+
+## 安全约束
+该 Agent 的安全边界和限制。
+
+## 工具集
+注册的工具列表及其用途。
+
+## 技术取舍
+关键设计决策及其理由, 备选方案及放弃原因。
+
+## 变更日志
+每次功能变更按时间倒序记录: 日期、变更内容、原因。
+```
+
+功能变更或新增后, **必须** 同步更新对应的架构文档, 特别是 "技术取舍" 和 "变更日志" 部分。
 
 ## Tech Stack
 
