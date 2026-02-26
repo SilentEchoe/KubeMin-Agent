@@ -29,7 +29,7 @@ class MemoryStore:
 
         Args:
             workspace: Workspace root path.
-            backend_type: Backend type: 'file' or 'jsonl'.
+            backend_type: Backend type: 'file', 'jsonl', or 'chroma'.
 
         Returns:
             Configured MemoryStore instance.
@@ -37,7 +37,10 @@ class MemoryStore:
         memory_dir = workspace / "memory"
         memory_dir.mkdir(parents=True, exist_ok=True)
 
-        if backend_type == "jsonl":
+        if backend_type == "chroma":
+            from kubemin_agent.agent.memory.chroma_backend import ChromaDBBackend
+            backend = ChromaDBBackend(memory_dir)
+        elif backend_type == "jsonl":
             from kubemin_agent.agent.memory.jsonl_backend import JSONLBackend
             backend = JSONLBackend(memory_dir)
         else:

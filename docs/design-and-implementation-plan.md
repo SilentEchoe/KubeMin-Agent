@@ -36,8 +36,7 @@
 
 ### 0.3 下一步（与 M3-M6 对齐）
 
-- 完成通用文件/Shell/K8s 只读工具的最小闭环
-- 增加端到端测试与调度编排测试
+- 端到端复杂协作流 (Multi-Agent Orchestration) 测试
 - 打通 Cron / Heartbeat 到统一控制面入口
 
 ---
