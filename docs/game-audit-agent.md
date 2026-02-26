@@ -1,6 +1,6 @@
-# GameTestAgent 使用文档
+# GameAuditAgent 使用文档
 
-GameTestAgent 是一个**独立模块化**的 Web 游戏测试/审核子 Agent。它通过 [Chrome DevTools MCP](https://github.com/ChromeDevTools/chrome-devtools-mcp) 自动化浏览器交互，可作为 KubeMin-Agent 中控层的子 Agent 被调度，也可以作为独立服务运行。
+GameAuditAgent 是一个**独立模块化**的 Web 游戏审核子 Agent。它通过 [Chrome DevTools MCP](https://github.com/ChromeDevTools/chrome-devtools-mcp) 自动化浏览器交互，可作为 KubeMin-Agent 中控层的子 Agent 被调度，也可以作为独立服务运行。
 
 ## 功能
 
@@ -33,7 +33,7 @@ Chrome DevTools MCP 通过 `npx` 自动下载，无需手动安装。
 ### HTTP 服务模式（额外依赖）
 
 ```bash
-pip install -e ".[game-test-service]"
+pip install -e ".[game-audit-service]"
 ```
 
 ## 使用方式
@@ -49,7 +49,7 @@ pip install -e ".[game-test-service]"
 ### 1. CLI 一次性测试
 
 ```bash
-game-test-agent test \
+game-audit-agent test \
   --pdf guide.pdf \
   --url https://game.example.com \
   --api-key $LLM_API_KEY
@@ -59,7 +59,7 @@ game-test-agent test \
 
 ```bash
 export GAME_TEST_URL=https://game.example.com
-game-test-agent test \
+game-audit-agent test \
   --pdf guide.pdf \
   --api-key $LLM_API_KEY
 ```
@@ -78,7 +78,7 @@ game-test-agent test \
 ### 2. HTTP 服务模式
 
 ```bash
-game-test-agent serve \
+game-audit-agent serve \
   --port 8080 \
   --api-key $LLM_API_KEY
 ```
@@ -98,7 +98,7 @@ curl http://localhost:8080/health
 ### 3. 作为模块调用
 
 ```bash
-python -m kubemin_agent.agents.game_test test \
+python -m kubemin_agent.agents.game_audit test \
   --pdf guide.pdf \
   --url https://game.example.com \
   --api-key $LLM_API_KEY
@@ -106,11 +106,11 @@ python -m kubemin_agent.agents.game_test test \
 
 ### 4. 通过中控层调度
 
-GameTestAgent 注册到中控层后，Scheduler 会自动识别意图并调度。
+GameAuditAgent 注册到中控层后，Scheduler 会自动识别意图并调度。
 
 ## 审查策略
 
-GameTestAgent 在测试过程中自动执行以下三项审查策略:
+GameAuditAgent 在测试过程中自动执行以下三项审查策略:
 
 ### 策略 1: 错误记录
 
@@ -162,7 +162,7 @@ GameTestAgent 在测试过程中自动执行以下三项审查策略:
 
 ## 元素定位
 
-GameTestAgent 使用 **uid 定位**（Chrome DevTools MCP 基于 a11y tree 自动分配），工作流程：
+GameAuditAgent 使用 **uid 定位**（Chrome DevTools MCP 基于 a11y tree 自动分配），工作流程：
 
 1. 调用 `snapshot` 获取页面结构和元素 uid
 2. 使用 uid 进行 `click`、`fill`、`hover` 等操作
@@ -171,7 +171,7 @@ GameTestAgent 使用 **uid 定位**（Chrome DevTools MCP 基于 a11y tree 自�
 ## 架构
 
 ```
-GameTestAgent
+GameAuditAgent
   |
   |-- MCPClient          (stdio JSON-RPC -> chrome-devtools-mcp subprocess)
   |-- BrowserTool        (12 种操作 -> MCP tool calls)

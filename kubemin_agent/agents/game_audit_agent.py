@@ -1,4 +1,4 @@
-"""GameTestAgent - Web game testing and auditing specialist."""
+"""GameAuditAgent - Web game auditing specialist."""
 
 import os
 from pathlib import Path
@@ -13,12 +13,12 @@ from kubemin_agent.providers.base import LLMProvider
 from kubemin_agent.session.manager import SessionManager
 
 
-class GameTestAgent(BaseAgent):
+class GameAuditAgent(BaseAgent):
     """
-    Web game testing and auditing sub-agent.
+    Web game auditing sub-agent.
 
     Reads PDF gameplay guides, then uses Chrome DevTools MCP to
-    automate browser interactions and verify game logic correctness,
+    automate browser interactions and audit game logic correctness,
     content compliance, and UI/UX quality.
 
     Can run as a sub-agent within the control plane or as a standalone service.
@@ -40,12 +40,12 @@ class GameTestAgent(BaseAgent):
 
     @property
     def name(self) -> str:
-        return "game_test"
+        return "game_audit"
 
     @property
     def description(self) -> str:
         return (
-            "Tests and audits web games by reading PDF gameplay guides "
+            "Audits web games by reading PDF gameplay guides "
             "and automating browser interactions via Chrome DevTools MCP "
             "to verify game logic correctness, content compliance, and UI/UX quality."
         )
@@ -57,7 +57,7 @@ class GameTestAgent(BaseAgent):
             url_hint = f"\nDefault game URL: {self._game_url}\n"
 
         return (
-            "You are GameTestAgent, a web game testing and auditing specialist.\n\n"
+            "You are GameAuditAgent, a web game auditing specialist.\n\n"
             f"{url_hint}"
             "Your workflow:\n"
             "1. First, read the PDF gameplay guide using 'read_pdf' to understand the expected game behavior\n"

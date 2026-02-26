@@ -1,12 +1,12 @@
 """
-Standalone entry point for GameTestAgent.
+Standalone entry point for GameAuditAgent.
 
 Usage:
-  # CLI mode: one-shot test
-  python -m kubemin_agent.agents.game_test --pdf guide.pdf --url https://game.example.com
+  # CLI mode: one-shot audit
+  python -m kubemin_agent.agents.game_audit --pdf guide.pdf --url https://game.example.com
 
   # HTTP service mode
-  python -m kubemin_agent.agents.game_test --serve --port 8080
+  python -m kubemin_agent.agents.game_audit --serve --port 8080
 """
 
 import asyncio
@@ -18,8 +18,8 @@ from loguru import logger
 from rich.console import Console
 
 app = typer.Typer(
-    name="game-test-agent",
-    help="GameTestAgent - Web game testing and auditing service",
+    name="game-audit-agent",
+    help="GameAuditAgent - Web game auditing service",
 )
 console = Console()
 
@@ -31,10 +31,10 @@ def _create_agent(
     workspace: Path,
     game_url: str | None = None,
 ):
-    """Create a GameTestAgent instance."""
+    """Create a GameAuditAgent instance."""
     from kubemin_agent.providers.litellm_provider import LiteLLMProvider
     from kubemin_agent.session.manager import SessionManager
-    from kubemin_agent.agents.game_test_agent import GameTestAgent
+    from kubemin_agent.agents.game_audit_agent import GameAuditAgent
 
     provider = LiteLLMProvider(
         api_key=api_key,
@@ -42,7 +42,7 @@ def _create_agent(
         default_model=model,
     )
     sessions = SessionManager(workspace)
-    return GameTestAgent(
+    return GameAuditAgent(
         provider=provider, sessions=sessions, workspace=workspace, game_url=game_url,
     )
 
@@ -81,7 +81,7 @@ def test(
         f"Generate a comprehensive test report with your findings."
     )
 
-    console.print("[bold]GameTestAgent[/bold] starting test...\n")
+    console.print("[bold]GameAuditAgent[/bold] starting audit...\n")
     console.print(f"PDF Guide: {pdf}")
     console.print(f"Game URL:  {url}")
     console.print(f"Model:     {model}")
@@ -89,7 +89,7 @@ def test(
 
     async def _run():
         try:
-            result = await agent.run(task_message, session_key="standalone:game_test")
+            result = await agent.run(task_message, session_key="standalone:game_audit")
             console.print(result)
         finally:
             await agent.cleanup()
@@ -110,7 +110,7 @@ def serve(
         help="Workspace directory",
     ),
 ) -> None:
-    """Start GameTestAgent as an HTTP service."""
+    """Start GameAuditAgent as an HTTP service."""
     try:
         import uvicorn
         from fastapi import FastAPI, UploadFile, File, Form
@@ -120,7 +120,7 @@ def serve(
         console.print("Run: pip install fastapi uvicorn python-multipart")
         raise typer.Exit(1)
 
-    api = FastAPI(title="GameTestAgent Service", version="0.1.0")
+    api = FastAPI(title="GameAuditAgent Service", version="0.1.0")
 
     @api.post("/test")
     async def run_test(
@@ -147,7 +147,7 @@ def serve(
         )
 
         try:
-            result = await agent.run(task_message, session_key=f"service:game_test:{game_url}")
+            result = await agent.run(task_message, session_key=f"service:game_audit:{game_url}")
             return JSONResponse({"status": "ok", "report": result})
         except Exception as e:
             return JSONResponse({"status": "error", "error": str(e)}, status_code=500)
@@ -156,9 +156,9 @@ def serve(
 
     @api.get("/health")
     async def health():
-        return {"status": "ok", "agent": "game_test"}
+        return {"status": "ok", "agent": "game_audit"}
 
-    console.print(f"[bold green]GameTestAgent HTTP service starting on {host}:{port}[/bold green]")
+    console.print(f"[bold green]GameAuditAgent HTTP service starting on {host}:{port}[/bold green]")
     uvicorn.run(api, host=host, port=port)
 
 

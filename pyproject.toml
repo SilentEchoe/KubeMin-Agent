@@ -35,7 +35,7 @@ dev = [
     "ruff>=0.1.0",
     "mypy>=1.0.0",
 ]
-game-test-service = [
+game-audit-service = [
     "fastapi>=0.100.0",
     "uvicorn>=0.23.0",
     "python-multipart>=0.0.6",
@@ -43,7 +43,7 @@ game-test-service = [
 
 [project.scripts]
 kubemin-agent = "kubemin_agent.cli.commands:app"
-game-test-agent = "kubemin_agent.agents.game_test.standalone:main"
+game-audit-agent = "kubemin_agent.agents.game_audit.standalone:main"
 
 [build-system]
 requires = ["hatchling"]
