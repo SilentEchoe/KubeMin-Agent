@@ -125,25 +125,69 @@ LLM 对信息位置敏感 (Primacy & Recency Bias):
   [MODIFY] kubemin_agent/agents/base.py            -- run() 接收 AgentContext
 ```
 
-### 方向 4: 记忆检索 (RAG)
+### 方向 4: 记忆检索 (RAG) -- 统一 Backend 接口
 
-**问题**: MemoryStore 目前全量加载 MEMORY.md, 随着内容增长会占用过多上下文。
+**问题**: MemoryStore 目前全量加载 MEMORY.md, 随着内容增长会占用过多上下文。且后端存储方式硬编码, 无法切换。
+
+**设计**: 策略模式 (Strategy Pattern), 统一 `MemoryBackend` 接口, 上层只依赖抽象, 底层可自由切换。
+
+```
+ContextBuilder / Agent
+       |
+  MemoryStore  (外观层: remember / recall / forget)
+       |
+  MemoryBackend  (抽象基类: store / search / delete / list_all)
+       |
+  ┌────┼──────────────┐
+  |    |               |
+FileBackend  JSONLBackend  VectorBackend (预留)
+(.md 文件)    (.jsonl)      (向量数据库)
+```
+
+**数据模型**:
+
+```python
+@dataclass
+class MemoryEntry:
+    id: str              # 唯一标识
+    content: str         # 记忆内容
+    tags: list[str]      # 标签 (用于过滤)
+    created_at: datetime  # 创建时间
+    source: str          # 来源 (agent_name, session_key)
+    metadata: dict       # 扩展字段
+```
+
+**Backend 差异**:
+
+| Backend | search 策略 | 适用场景 |
+|---------|------------|----------|
+| FileBackend | 关键词子串匹配 | 开发/测试, 记忆量少, 零依赖 |
+| JSONLBackend | TF-IDF 评分 | 中等规模, 无需外部依赖 |
+| VectorBackend | 嵌入向量 + 余弦相似度 | 大量记忆, 语义检索 (预留接口) |
 
 **实施步骤**:
 
-1. 将 MEMORY.md 改为分段存储: 每条记忆一个文件, 或用 JSONL 格式
-2. 新增 `search(query: str, top_k: int) -> list[str]` 方法:
-   - 第一阶段: 简单关键词匹配 (BM25 或 TF-IDF)
-   - 第二阶段 (可选): 引入嵌入向量实现语义检索
-3. 修改 `ContextBuilder.build_system_prompt()`:
-   - 用当前用户消息作为 query, 从 MemoryStore 检索 top_k 条相关记忆
-   - 只将相关记忆放入上下文, 而非全部
+1. 将 `agent/memory.py` 重构为 `agent/memory/` 包:
+   - `__init__.py` -- 导出 MemoryStore, MemoryEntry, MemoryBackend
+   - `entry.py` -- MemoryEntry 数据类
+   - `backend.py` -- MemoryBackend 抽象基类
+   - `file_backend.py` -- FileBackend (基于 .md 文件, 关键词匹配)
+   - `jsonl_backend.py` -- JSONLBackend (基于 .jsonl, TF-IDF 检索)
+   - `store.py` -- MemoryStore 外观层
+2. MemoryStore 对外接口: `remember()`, `recall()`, `forget()`, `get_context()`
+3. 通过构造参数或配置选择 Backend, 默认 FileBackend
+4. 修改 `context.py` 使用新接口: `recall(query, top_k)` 替代全量加载
 
 ```
 涉及文件:
-  [MODIFY] kubemin_agent/agent/memory.py     -- 分段存储 + search 方法
-  [MODIFY] kubemin_agent/agent/context.py    -- 检索式记忆加载
-  [NEW]    kubemin_agent/agent/retriever.py  -- (可选) 独立检索模块
+  [DELETE] kubemin_agent/agent/memory.py
+  [NEW]    kubemin_agent/agent/memory/__init__.py
+  [NEW]    kubemin_agent/agent/memory/entry.py
+  [NEW]    kubemin_agent/agent/memory/backend.py
+  [NEW]    kubemin_agent/agent/memory/file_backend.py
+  [NEW]    kubemin_agent/agent/memory/jsonl_backend.py
+  [NEW]    kubemin_agent/agent/memory/store.py
+  [MODIFY] kubemin_agent/agent/context.py  -- 使用新 MemoryStore 接口
 ```
 
 ### 方向 5: 上下文观测

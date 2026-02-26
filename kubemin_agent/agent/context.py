@@ -20,7 +20,7 @@ class ContextBuilder:
 
     def __init__(self, workspace: Path) -> None:
         self.workspace = workspace
-        self.memory = MemoryStore(workspace)
+        self.memory = MemoryStore.create(workspace)
         self.skills = SkillsLoader(workspace)
 
     def build_system_prompt(self, skill_names: list[str] | None = None) -> str:
@@ -43,8 +43,8 @@ class ContextBuilder:
         if bootstrap:
             parts.append(bootstrap)
 
-        # Memory context
-        memory = self.memory.get_memory_context()
+        # Memory context (non-async fallback: load all, capped)
+        memory = self._get_memory_sync()
         if memory:
             parts.append(f"# Memory\n\n{memory}")
 
@@ -89,6 +89,24 @@ class ContextBuilder:
             f"- Custom skills: {workspace_path}/skills/{{skill-name}}/SKILL.md\n\n"
             "Always be helpful, accurate, and concise. When using tools, explain what you're doing."
         )
+
+    def _get_memory_sync(self) -> str:
+        """Get memory context synchronously (for use in sync build_system_prompt)."""
+        import asyncio
+
+        try:
+            loop = asyncio.get_running_loop()
+            # Already in an async context -- schedule as a task
+            # Fall back to empty; async callers should use memory.get_context() directly
+            return ""
+        except RuntimeError:
+            pass
+
+        # No running loop -- safe to run synchronously
+        try:
+            return asyncio.run(self.memory.get_context())
+        except Exception:
+            return ""
 
     def _load_bootstrap_files(self) -> str:
         """Load all bootstrap files from workspace."""
