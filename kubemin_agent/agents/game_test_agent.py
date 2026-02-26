@@ -1,5 +1,6 @@
 """GameTestAgent - Web game testing and auditing specialist."""
 
+import os
 from pathlib import Path
 
 from kubemin_agent.agents.base import BaseAgent
@@ -29,10 +30,12 @@ class GameTestAgent(BaseAgent):
         sessions: SessionManager,
         workspace: Path | None = None,
         headless: bool = True,
+        game_url: str | None = None,
     ) -> None:
         self._workspace = workspace or Path.home() / ".kubemin-agent" / "workspace"
         self._workspace.mkdir(parents=True, exist_ok=True)
         self._mcp = MCPClient(headless=headless)
+        self._game_url = game_url or os.environ.get("GAME_TEST_URL")
         super().__init__(provider, sessions)
 
     @property
@@ -49,8 +52,13 @@ class GameTestAgent(BaseAgent):
 
     @property
     def system_prompt(self) -> str:
+        url_hint = ""
+        if self._game_url:
+            url_hint = f"\nDefault game URL: {self._game_url}\n"
+
         return (
             "You are GameTestAgent, a web game testing and auditing specialist.\n\n"
+            f"{url_hint}"
             "Your workflow:\n"
             "1. First, read the PDF gameplay guide using 'read_pdf' to understand the expected game behavior\n"
             "2. Navigate to the game URL using 'browser_action' with action='navigate'\n"
@@ -69,6 +77,33 @@ class GameTestAgent(BaseAgent):
             "- **UI/UX Testing**: Verify interactive elements work, layout is correct, feedback is clear\n"
             "- **Console Errors**: Check for JavaScript errors via 'browser_action' with action='console_logs'\n"
             "- **Network**: Check for failed API calls via 'browser_action' with action='network'\n\n"
+            "=== AUDIT STRATEGIES (MUST FOLLOW) ===\n\n"
+            "STRATEGY 1 -- Error Recording:\n"
+            "After EVERY browser interaction, check for errors:\n"
+            "  a) Call 'browser_action' with action='console_logs' to check for JS errors\n"
+            "  b) Call 'browser_action' with action='snapshot' to check if any error dialog/toast appeared\n"
+            "  c) If an error is found: immediately take a screenshot, record the error message, "
+            "the action that triggered it, and the timestamp into your report under 'Console/Network Issues'\n"
+            "  d) Also check 'browser_action' with action='network' periodically for failed HTTP requests (4xx/5xx)\n\n"
+            "STRATEGY 2 -- Coin/Gold Verification (REPEAT until confirmed):\n"
+            "When ANY action involves coin/gold/currency changes:\n"
+            "  a) BEFORE the action: read the current coin count via snapshot or evaluate JS to extract the exact number\n"
+            "  b) Record the expected change (e.g. -10 coins for a purchase)\n"
+            "  c) EXECUTE the action\n"
+            "  d) AFTER the action: read the coin count again\n"
+            "  e) VERIFY: does (new_count - old_count) match the expected change?\n"
+            "  f) If uncertain or mismatched: REPEAT steps (d)-(e) at least once more to confirm\n"
+            "  g) If still mismatched after re-check: take a screenshot and record as a bug in 'Issues Found'\n"
+            "  h) Always document: old_count, expected_change, new_count, pass/fail\n\n"
+            "STRATEGY 3 -- Image Analysis (Position -> Verify -> Execute):\n"
+            "When you need to analyze or interact with visual/image content:\n"
+            "  a) POSITION: call 'snapshot' to locate the target element and its uid\n"
+            "  b) VERIFY: take a screenshot of the target area (use uid-based screenshot if possible)\n"
+            "  c) ANALYZE: examine the screenshot to confirm you have the right element\n"
+            "  d) If the positioning is wrong or analysis is uncertain: go back to step (a) and re-locate\n"
+            "  e) Only EXECUTE the intended action (click, audit, etc.) after confident positioning\n"
+            "  f) After execution, take another screenshot to verify the result\n\n"
+            "=== END AUDIT STRATEGIES ===\n\n"
             "Test report format:\n"
             "## Test Report\n"
             "### 1. Game Overview\n"

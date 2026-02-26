@@ -24,7 +24,13 @@ app = typer.Typer(
 console = Console()
 
 
-def _create_agent(api_key: str, api_base: str | None, model: str, workspace: Path):
+def _create_agent(
+    api_key: str,
+    api_base: str | None,
+    model: str,
+    workspace: Path,
+    game_url: str | None = None,
+):
     """Create a GameTestAgent instance."""
     from kubemin_agent.providers.litellm_provider import LiteLLMProvider
     from kubemin_agent.session.manager import SessionManager
@@ -36,13 +42,15 @@ def _create_agent(api_key: str, api_base: str | None, model: str, workspace: Pat
         default_model=model,
     )
     sessions = SessionManager(workspace)
-    return GameTestAgent(provider=provider, sessions=sessions, workspace=workspace)
+    return GameTestAgent(
+        provider=provider, sessions=sessions, workspace=workspace, game_url=game_url,
+    )
 
 
 @app.command()
 def test(
     pdf: Path = typer.Option(..., "--pdf", "-p", help="Path to PDF gameplay guide"),
-    url: str = typer.Option(..., "--url", "-u", help="Game URL to test"),
+    url: str = typer.Option(None, "--url", "-u", envvar="GAME_TEST_URL", help="Game URL to test (also via GAME_TEST_URL env var)"),
     api_key: str = typer.Option(..., "--api-key", "-k", envvar="LLM_API_KEY", help="LLM API key"),
     api_base: str = typer.Option(None, "--api-base", envvar="LLM_API_BASE", help="LLM API base URL"),
     model: str = typer.Option("openrouter/google/gemini-2.0-flash-001", "--model", "-m", help="LLM model"),
@@ -53,11 +61,15 @@ def test(
     ),
 ) -> None:
     """Run a one-shot game test: read PDF guide, test the game, output report."""
+    if not url:
+        console.print("[red]Error:[/red] Game URL is required. Use --url or set GAME_TEST_URL env var.")
+        raise typer.Exit(1)
+
     if not pdf.exists():
         console.print(f"[red]Error:[/red] PDF not found: {pdf}")
         raise typer.Exit(1)
 
-    agent = _create_agent(api_key, api_base, model, workspace)
+    agent = _create_agent(api_key, api_base, model, workspace, game_url=url)
 
     task_message = (
         f"Please test the web game at {url}.\n\n"
@@ -122,7 +134,7 @@ def serve(
         content = await pdf_file.read()
         pdf_path.write_bytes(content)
 
-        agent = _create_agent(api_key, api_base, model, workspace)
+        agent = _create_agent(api_key, api_base, model, workspace, game_url=game_url)
 
         task_message = (
             f"Please test the web game at {game_url}.\n\n"

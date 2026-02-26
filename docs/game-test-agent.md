@@ -10,6 +10,9 @@ GameTestAgent 是一个**独立模块化**的 Web 游戏测试/审核子 Agent�
 - 审核游戏内容合规性（文本/图片敏感内容检测）
 - 测试 UI/UX 质量（交互元素、布局、反馈）
 - 检查 Console 错误和 Network 异常请求
+- **错误自动记录** -- 每次交互后检测 JS 错误和页面异常
+- **金币/货币变动反复校验** -- 操作前后读取数值并重复验证
+- **图片分析定位-审核-执行循环** -- 确认定位正确后才执行操作
 
 ## 前置条件
 
@@ -35,6 +38,14 @@ pip install -e ".[game-test-service]"
 
 ## 使用方式
 
+### 环境变量
+
+| 环境变量 | 说明 |
+|----------|------|
+| `GAME_TEST_URL` | 待测游戏 URL, 可替代 `--url` 参数 |
+| `LLM_API_KEY` | LLM API Key |
+| `LLM_API_BASE` | LLM API 地址 |
+
 ### 1. CLI 一次性测试
 
 ```bash
@@ -44,12 +55,21 @@ game-test-agent test \
   --api-key $LLM_API_KEY
 ```
 
+也可以通过环境变量指定游戏地址:
+
+```bash
+export GAME_TEST_URL=https://game.example.com
+game-test-agent test \
+  --pdf guide.pdf \
+  --api-key $LLM_API_KEY
+```
+
 **参数说明**：
 
 | 参数 | 必填 | 说明 |
 |------|------|------|
 | `--pdf`, `-p` | 是 | PDF 玩法指南路径 |
-| `--url`, `-u` | 是 | Web 游戏 URL |
+| `--url`, `-u` | 否 | Web 游戏 URL (也可通过 `GAME_TEST_URL` 环境变量设置) |
 | `--api-key`, `-k` | 是 | LLM API Key（也可通过 `LLM_API_KEY` 环境变量设置） |
 | `--api-base` | 否 | LLM API 地址（通过 `LLM_API_BASE` 环境变量设置） |
 | `--model`, `-m` | 否 | LLM 模型（默认 `openrouter/google/gemini-2.0-flash-001`） |
@@ -87,6 +107,39 @@ python -m kubemin_agent.agents.game_test test \
 ### 4. 通过中控层调度
 
 GameTestAgent 注册到中控层后，Scheduler 会自动识别意图并调度。
+
+## 审查策略
+
+GameTestAgent 在测试过程中自动执行以下三项审查策略:
+
+### 策略 1: 错误记录
+
+每次浏览器交互后, Agent 自动:
+- 检查 Console 中是否有 JS 错误
+- 检查页面是否出现错误弹窗/提示
+- 发现错误时立即截图, 记录错误信息和触发操作
+- 定期检查 Network 中是否有失败的 HTTP 请求
+
+### 策略 2: 金币/货币校验 (反复验证)
+
+涉及金币/货币变动的操作:
+1. 操作前读取当前金币数
+2. 记录预期变化量
+3. 执行操作
+4. 操作后重新读取金币数
+5. 校验差值是否符合预期
+6. 如不确定, 至少再重复一次确认
+7. 如仍不符, 截图并记录为 Bug
+
+### 策略 3: 图片分析 (定位 -> 审核 -> 执行)
+
+需要分析图片/视觉内容时:
+1. Snapshot 定位目标元素
+2. 对目标区域截图
+3. 分析截图确认定位正确
+4. 定位不准则重新执行步骤 1-3
+5. 确认无误后才执行操作
+6. 操作后再次截图验证结果
 
 ## 测试报告格式
 
