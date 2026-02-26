@@ -1,5 +1,7 @@
 """WorkflowAgent - KubeMin workflow orchestration specialist."""
 
+from kubemin_agent.agent.tools.filesystem import ReadFileTool, WriteFileTool
+from kubemin_agent.agent.tools.yaml_validator import YAMLValidatorTool
 from kubemin_agent.agents.base import BaseAgent
 
 
@@ -43,7 +45,6 @@ class WorkflowAgent(BaseAgent):
 
     def _register_tools(self) -> None:
         """Register workflow-specific tools."""
-        # Tools will be registered when concrete tool implementations are available
-        # e.g., self.tools.register(WorkflowCRUDTool(...))
-        # e.g., self.tools.register(WorkflowValidateTool(...))
-        pass
+        self.tools.register(ReadFileTool(self._workspace))
+        self.tools.register(WriteFileTool(self._workspace))
+        self.tools.register(YAMLValidatorTool())

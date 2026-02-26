@@ -1,5 +1,7 @@
 """GeneralAgent - General-purpose task handler."""
 
+from kubemin_agent.agent.tools.filesystem import ReadFileTool, WriteFileTool
+from kubemin_agent.agent.tools.shell import ShellTool
 from kubemin_agent.agents.base import BaseAgent
 
 
@@ -43,8 +45,6 @@ class GeneralAgent(BaseAgent):
 
     def _register_tools(self) -> None:
         """Register general-purpose tools."""
-        # Tools will be registered when concrete tool implementations are available
-        # e.g., self.tools.register(FilesystemTool(...))
-        # e.g., self.tools.register(ShellTool(...))
-        # e.g., self.tools.register(WebSearchTool(...))
-        pass
+        self.tools.register(ReadFileTool(self._workspace))
+        self.tools.register(WriteFileTool(self._workspace))
+        self.tools.register(ShellTool())

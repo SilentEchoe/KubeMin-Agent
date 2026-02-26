@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import time
 from abc import ABC, abstractmethod
+from pathlib import Path
 from typing import Any
 
 from loguru import logger
@@ -29,10 +30,12 @@ class BaseAgent(ABC):
         provider: LLMProvider,
         sessions: SessionManager,
         audit: Any | None = None,
+        workspace: Path | None = None,
     ) -> None:
         self.provider = provider
         self.sessions = sessions
         self._audit = audit
+        self._workspace = workspace or Path.cwd()
         self.tools = ToolRegistry()
         self._register_tools()
 

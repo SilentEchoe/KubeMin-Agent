@@ -47,7 +47,7 @@ K8sAgent (extends BaseAgent)
 
 | 工具 | 状态 | 用途 |
 |------|------|------|
-| KubectlTool | 规划中 | 执行只读 kubectl 命令 |
+| KubectlTool | 已实现 | 只读 kubectl 命令, 白名单子命令, 命名空间隔离, Secret 过滤 |
 | KubeMinAPITool | 规划中 | 查询 KubeMin 平台资源 |
 
 ## 技术取舍
@@ -62,5 +62,6 @@ K8sAgent (extends BaseAgent)
 
 | 日期 | 变更 | 原因 |
 |------|------|------|
+| 2026-02-26 | 实现 KubectlTool (只读白名单 + 命名空间隔离 + Secret 过滤) | MVP 工具集 |
 | 2026-02-26 | 接入中控运行时, 默认经 Scheduler 调度 | 落地 Agent Control Plane 主链路 |
 | 2025-02 | 初始设计, 定义只读约束和 system prompt | 项目初始化 |

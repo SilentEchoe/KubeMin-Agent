@@ -72,9 +72,15 @@ class ControlPlaneRuntime:
 
     def _register_default_agents(self) -> None:
         """Register built-in sub-agents."""
-        self.registry.register(GeneralAgent(self.provider, self.sessions, audit=self.audit))
-        self.registry.register(K8sAgent(self.provider, self.sessions, audit=self.audit))
-        self.registry.register(WorkflowAgent(self.provider, self.sessions, audit=self.audit))
+        self.registry.register(
+            GeneralAgent(self.provider, self.sessions, audit=self.audit, workspace=self.workspace)
+        )
+        self.registry.register(
+            K8sAgent(self.provider, self.sessions, audit=self.audit, workspace=self.workspace)
+        )
+        self.registry.register(
+            WorkflowAgent(self.provider, self.sessions, audit=self.audit, workspace=self.workspace)
+        )
 
     async def handle_message(
         self,

@@ -48,8 +48,9 @@ WorkflowAgent (extends BaseAgent)
 
 | 工具 | 状态 | 用途 |
 |------|------|------|
-| WorkflowCRUDTool | 规划中 | 通过 KubeMin API 管理 Workflow |
-| WorkflowValidateTool | 规划中 | 校验 YAML 结构和语义 |
+| ReadFileTool | 已实现 | 读取现有 Workflow YAML 文件 |
+| WriteFileTool | 已实现 | 写出生成的 Workflow YAML |
+| YAMLValidatorTool | 已实现 | YAML 语法 + KubeMin 结构校验 (apiVersion/kind/metadata/spec/components) |
 
 ## 技术取舍
 
@@ -63,5 +64,6 @@ WorkflowAgent (extends BaseAgent)
 
 | 日期 | 变更 | 原因 |
 |------|------|------|
+| 2026-02-26 | 实现 ReadFileTool + WriteFileTool + YAMLValidatorTool | MVP 工具集 |
 | 2026-02-26 | 接入中控运行时, 默认经 Scheduler 调度 | 落地 Agent Control Plane 主链路 |
 | 2025-02 | 初始设计, 定义 YAML 生成和 Trait 配置能力 | 项目初始化 |

@@ -32,8 +32,8 @@ GeneralAgent (extends BaseAgent)
 | 功能 | 状态 | 说明 |
 |------|------|------|
 | 中控调度接入 | 已实现 | 通过 ControlPlaneRuntime 注册到 AgentRegistry, 由 Scheduler 调度 |
-| 文件读写 | 规划中 | workspace 内文件的 CRUD |
-| Shell 命令执行 | 规划中 | 安全的命令行操作 |
+| 文件读写 | 已实现 | ReadFileTool + WriteFileTool, workspace 沙箱限制 |
+| Shell 命令执行 | 已实现 | ShellTool, 命令白名单 + 危险模式阻断 |
 | Web 搜索 | 规划中 | 搜索引擎查询和网页抓取 |
 | 通用问答 | 已实现 | 通过 LLM 回答云原生/通用技术问题 |
 
@@ -48,8 +48,9 @@ GeneralAgent (extends BaseAgent)
 
 | 工具 | 状态 | 用途 |
 |------|------|------|
-| FilesystemTool | 规划中 | 受限的文件系统操作 |
-| ShellTool | 规划中 | 安全沙箱内的 Shell 命令 |
+| ReadFileTool | 已实现 | workspace 内文件读取, 敏感文件过滤 |
+| WriteFileTool | 已实现 | workspace 内文件写入, 自动创建父目录 |
+| ShellTool | 已实现 | 安全沙箱内的 Shell 命令, 命令白名单 |
 | WebSearchTool | 规划中 | 网络搜索和信息检索 |
 
 ## 技术取舍
@@ -64,5 +65,6 @@ GeneralAgent (extends BaseAgent)
 
 | 日期 | 变更 | 原因 |
 |------|------|------|
+| 2026-02-26 | 实现 ReadFileTool + WriteFileTool + ShellTool | MVP 工具集, 使 GeneralAgent 可实际处理用户请求 |
 | 2026-02-26 | 接入中控运行时, 由 Scheduler 默认调度执行 | 落地 Agent Control Plane 主链路 |
 | 2025-02 | 初始设计, 定义 fallback 定位和安全约束 | 项目初始化 |

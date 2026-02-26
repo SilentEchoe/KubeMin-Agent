@@ -1,5 +1,6 @@
 """K8sAgent - Kubernetes operations specialist."""
 
+from kubemin_agent.agent.tools.kubectl import KubectlTool
 from kubemin_agent.agents.base import BaseAgent
 
 
@@ -42,7 +43,4 @@ class K8sAgent(BaseAgent):
 
     def _register_tools(self) -> None:
         """Register K8s-specific tools."""
-        # Tools will be registered when concrete tool implementations are available
-        # e.g., self.tools.register(KubectlTool(...))
-        # e.g., self.tools.register(KubeMinAPITool(...))
-        pass
+        self.tools.register(KubectlTool())
