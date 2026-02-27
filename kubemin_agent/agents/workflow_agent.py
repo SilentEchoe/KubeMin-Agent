@@ -43,6 +43,10 @@ class WorkflowAgent(BaseAgent):
             "Always provide clear explanations alongside generated YAML."
         )
 
+    @property
+    def allowed_tools(self) -> list[str]:
+        return ["read_file", "write_file", "validate_yaml"]
+
     def _register_tools(self) -> None:
         """Register workflow-specific tools."""
         self.tools.register(ReadFileTool(self._workspace))

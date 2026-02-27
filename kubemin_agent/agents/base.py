@@ -38,6 +38,14 @@ class BaseAgent(ABC):
         self._workspace = workspace or Path.cwd()
         self.tools = ToolRegistry()
         self._register_tools()
+        
+        # Enforce allowlist if defined
+        if getattr(self, "allowed_tools", None) is not None:
+            registered_names = self.tools.tool_names
+            for tool_name in registered_names:
+                if tool_name not in self.allowed_tools:
+                    logger.warning(f"[{self.name}] Removing unauthorized tool '{tool_name}' (not in allowlist)")
+                    self.tools.unregister(tool_name)
 
     @property
     @abstractmethod
@@ -56,6 +64,16 @@ class BaseAgent(ABC):
     def system_prompt(self) -> str:
         """Domain-specific system prompt."""
         pass
+
+    @property
+    def allowed_tools(self) -> list[str]:
+        """List of allowed tool names for this agent. Empty list means no tools allowed."""
+        return []
+
+    @property
+    def allowed_mcps(self) -> list[str]:
+        """List of allowed MCP server names for this agent. Empty list means no MCPs allowed."""
+        return []
 
     @abstractmethod
     def _register_tools(self) -> None:

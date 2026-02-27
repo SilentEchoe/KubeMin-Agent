@@ -43,6 +43,10 @@ class GeneralAgent(BaseAgent):
             "Be helpful, concise, and always explain what you're doing."
         )
 
+    @property
+    def allowed_tools(self) -> list[str]:
+        return ["read_file", "write_file", "run_command"]
+
     def _register_tools(self) -> None:
         """Register general-purpose tools."""
         self.tools.register(ReadFileTool(self._workspace))

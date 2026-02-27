@@ -87,3 +87,22 @@
 2. `pytest tests/` -- 现有测试不回退
 3. 为每个新工具编写单元测试 (tests/test_tools.py)
 4. 编译检查: `python3 -m compileall kubemin_agent`
+
+---
+
+## 架构原则：工具与 MCP 白名单机制 (Tool/MCP Allowlist)
+
+为了明确 Agent 的能力边界，提升系统安全性和可靠性，所有的 Agent 必须采用**显式白名单机制 (Explicit Allowlist)** 来注册和使用 Tool 与 MCP 服务器。
+
+### 为什么需要白名单限制？
+
+1. **明确的职责边界 (Separation of Concerns):** 确保每个 Agent 只能访问完成其特定任务所需的最小权限集合。例如，`K8sAgent` 仅能使用只读的 `kubectl` 功能，无权进行文件写入或执行系统 Shell。
+2. **提升安全性 (Reduce Blast Radius):** 防止 LLM 在遭遇 Prompt Injection 攻击或产生幻觉时发生越权操作。按白名单分配权限沙箱，可以从底层直接拦截越界调用。
+3. **减少上下文污染 (Optimize Token & Precision):** 精简注入到 System Prompt 中的工具定义，降低模型因过多无关工具而产生的疑惑，从而提高意图识别与工具调用的准确度，并节省 Token 花销。
+4. **增强可审计性 (Auditability):** 便于在 `ControlPlaneRuntime` 或 `AgentRegistry` 层面对跨界行为进行日志记录与拦截告警。
+
+### 实施规范
+
+- `BaseAgent` 应提供声明允许工具链（`allowed_tools` / `allowed_mcps`）的接口或属性。
+- 子类 Agent 必须在初始化时明确列出所需的具体工具清单。
+- `ToolRegistry` 在为 Agent 挂载工具时，严格根据该白名单进行筛选与注册，拒绝加载清单外的任何工具。

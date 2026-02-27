@@ -41,6 +41,10 @@ class K8sAgent(BaseAgent):
             "Always explain what you're doing and provide clear, actionable information."
         )
 
+    @property
+    def allowed_tools(self) -> list[str]:
+        return ["kubectl"]
+
     def _register_tools(self) -> None:
         """Register K8s-specific tools."""
         self.tools.register(KubectlTool())
