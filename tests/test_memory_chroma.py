@@ -1,10 +1,35 @@
 """Tests for ChromaDB memory backend."""
 
-
+import os
 import pytest
 
 from kubemin_agent.agent.memory.chroma_backend import ChromaDBBackend
 from kubemin_agent.agent.memory.entry import MemoryEntry
+
+
+@pytest.fixture(autouse=True)
+def isolated_chroma_env(tmp_path):
+    """Ensure ONNX and Chroma don't clash on default cache dirs during testing."""
+    cache_dir = tmp_path / ".cache"
+    cache_dir.mkdir()
+    
+    old_onnx = os.environ.get("ONNX_HOME")
+    old_chroma = os.environ.get("CHROMA_CACHE_DIR")
+    
+    os.environ["ONNX_HOME"] = str(cache_dir / "onnx")
+    os.environ["CHROMA_CACHE_DIR"] = str(cache_dir / "chroma")
+    
+    yield
+    
+    if old_onnx is not None:
+        os.environ["ONNX_HOME"] = old_onnx
+    else:
+        os.environ.pop("ONNX_HOME", None)
+        
+    if old_chroma is not None:
+        os.environ["CHROMA_CACHE_DIR"] = old_chroma
+    else:
+        os.environ.pop("CHROMA_CACHE_DIR", None)
 
 
 @pytest.fixture
