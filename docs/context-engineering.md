@@ -40,18 +40,19 @@
 
 | 执行链路 | 状态 | 上下文构建方式 |
 |---|---|---|
-| 控制面主链路 (`control/runtime.py`) | 默认启用 | 子 Agent 直接使用 `system_prompt + history[-10:] + current_message` |
-| 兼容链路 (`agent/loop.py`) | 保留 | 使用 `ContextBuilder.build_messages()` 组装上下文 |
+| 控制面主链路 (`control/runtime.py`) | 默认启用 | 子 Agent 使用\"任务锚点 + token 预算历史裁剪 + 当前任务\" |
+| 兼容链路 (`agent/loop.py`) | 保留 | `ContextBuilder` 已接入同一预算策略与任务锚点 |
 
 结论:
-- 当前生产主路径并未统一走 `ContextBuilder`，上下文策略在两条链路上存在实现分叉。
+- 两条链路已在上下文策略上收敛，`ContextBuilder` 仍作为 legacy 路径装配器保留。
 
 ### 4.2 上下文来源与处理策略
 
 | 信息类型 | 当前行为 | 代码位置 |
 |---|---|---|
 | System Prompt | 每个子 Agent 固定 prompt | `kubemin_agent/agents/*.py` |
-| 对话历史 | 固定滑窗 `history[-10:]` | `kubemin_agent/agents/base.py` |
+| 对话历史 | token 预算裁剪 + 最近消息兜底 | `kubemin_agent/agents/base.py`, `agent/context.py` |
+| 任务目标 | `TASK ANCHOR` + 每轮 `TASK REMINDER` | `kubemin_agent/agents/base.py`, `agent/context.py` |
 | 记忆 | `MemoryStore.get_context(top_k=5)` | `kubemin_agent/agent/context.py`, `agent/memory/store.py` |
 | Skills | always skill 全量 + 其他摘要 | `kubemin_agent/agent/skills.py` |
 | Browser snapshot | 4000 字符截断 | `kubemin_agent/agent/tools/browser.py` |
@@ -151,7 +152,8 @@ flowchart LR
 
 实施结果:
 - `kubemin_agent/agents/base.py`: 已接入预算器，不再硬编码窗口
-- `kubemin_agent/control/runtime.py`: 已将预算参数从配置注入子 Agent
+- `kubemin_agent/agent/context.py` 与 `kubemin_agent/agent/loop.py`: 已接入同一预算策略
+- `kubemin_agent/control/runtime.py` 与 CLI fallback: 已将预算参数从配置注入执行链路
 
 验收:
 - 任意请求均输出预算报告 (可通过 debug log 或 audit 附加字段)
@@ -161,9 +163,7 @@ flowchart LR
 - `BaseAgent.run()` 已由固定 `history[-10:]` 改为 token 预算裁剪
 - 新增任务锚点 (`TASK ANCHOR`) 与每轮提醒 (`TASK REMINDER`) 以降低长任务目标漂移
 - 上述预算参数已配置化并由 `ControlPlaneRuntime.from_config()` 注入默认子 Agent
-
-剩余项:
-- `kubemin_agent/agent/context.py` 与 `kubemin_agent/agent/loop.py` 尚未并入同一预算策略（兼容链路后续收敛）
+- legacy `AgentLoop` 也已接入同一预算策略，避免双轨行为不一致
 
 ### M3 (P1): 工具结果语义摘要层
 
@@ -263,5 +263,6 @@ flowchart LR
 
 | 日期 | 变更 | 原因 |
 |---|---|---|
+| 2026-02-27 | legacy AgentLoop 收敛到与控制面一致的上下文预算与任务锚点策略 | 消除执行链路策略分叉，提升行为一致性 |
 | 2026-02-27 | M2 核心能力落地: 控制面子 Agent 接入动态上下文预算与任务锚点 | 解决长任务目标漂移与固定 10 轮窗口问题 |
 | 2026-02-27 | 重构文档为专业版上下文工程设计与路线图，纳入在线评估与可观测能力 | 对齐当前实现，提供可执行演进计划 |

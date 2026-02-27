@@ -257,7 +257,7 @@ class BaseAgent(ABC):
             + 256
         )
         history_budget = max(0, self._max_context_tokens - base_tokens)
-        if history_budget <= 0 or not history:
+        if not history:
             return []
 
         selected_rev: list[dict[str, Any]] = []

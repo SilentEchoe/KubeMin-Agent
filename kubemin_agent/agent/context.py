@@ -18,8 +18,19 @@ class ContextBuilder:
 
     BOOTSTRAP_FILES = ["AGENTS.md", "SOUL.md", "USER.md", "TOOLS.md", "IDENTITY.md"]
 
-    def __init__(self, workspace: Path) -> None:
+    def __init__(
+        self,
+        workspace: Path,
+        max_context_tokens: int = 6000,
+        min_recent_history_messages: int = 4,
+        task_anchor_max_chars: int = 600,
+        history_message_max_chars: int = 1200,
+    ) -> None:
         self.workspace = workspace
+        self.max_context_tokens = max(512, max_context_tokens)
+        self.min_recent_history_messages = max(0, min_recent_history_messages)
+        self.task_anchor_max_chars = max(120, task_anchor_max_chars)
+        self.history_message_max_chars = max(120, history_message_max_chars)
         self.memory = MemoryStore.create(workspace)
         self.skills = SkillsLoader(workspace)
 
@@ -139,17 +150,44 @@ class ContextBuilder:
         """
         messages: list[dict[str, Any]] = []
 
-        # System prompt
         system_prompt = self.build_system_prompt(skill_names)
+        task_anchor = self.build_task_anchor(current_message)
+        selected_history = self._select_history_for_budget(
+            history=history,
+            current_message=current_message,
+            system_prompt=system_prompt,
+            task_anchor=task_anchor,
+        )
+
         messages.append({"role": "system", "content": system_prompt})
-
-        # History
-        messages.extend(history)
-
-        # Current message
+        messages.append({"role": "system", "content": task_anchor})
+        messages.extend(selected_history)
         messages.append({"role": "user", "content": current_message})
 
         return messages
+
+    def build_task_anchor(self, current_message: str) -> str:
+        """Build a stable objective anchor for long-running tasks."""
+        objective = self._compact_text(current_message.strip(), self.task_anchor_max_chars)
+        return (
+            "[TASK ANCHOR]\n"
+            "Primary objective:\n"
+            f"{objective}\n\n"
+            "Execution guardrails:\n"
+            "- Keep every step aligned to this objective.\n"
+            "- Avoid unrelated exploration.\n"
+            "- If conflicts appear, prioritize this objective and safety constraints.\n"
+            "- Final response must directly answer this objective."
+        )
+
+    def build_task_reminder(self, current_message: str) -> str:
+        """Build a compact task reminder for each LLM iteration."""
+        objective = self._compact_text(current_message.strip(), 220)
+        return (
+            "[TASK REMINDER]\n"
+            f"{objective}\n"
+            "Continue only with actions that advance this objective."
+        )
 
     def add_tool_result(
         self,
@@ -204,3 +242,73 @@ class ContextBuilder:
 
         messages.append(msg)
         return messages
+
+    def _select_history_for_budget(
+        self,
+        *,
+        history: list[dict[str, Any]],
+        current_message: str,
+        system_prompt: str,
+        task_anchor: str,
+    ) -> list[dict[str, Any]]:
+        """Select history under token budget instead of fixed turn count."""
+        base_tokens = (
+            self._estimate_tokens(system_prompt)
+            + self._estimate_tokens(task_anchor)
+            + self._estimate_tokens(current_message)
+            + 256
+        )
+        history_budget = max(0, self.max_context_tokens - base_tokens)
+        if not history:
+            return []
+
+        selected_rev: list[dict[str, Any]] = []
+        used_tokens = 0
+
+        for raw in reversed(history):
+            role = str(raw.get("role", "user"))
+            content = str(raw.get("content", ""))
+            if not content.strip():
+                continue
+
+            compact = self._compact_text(content, self.history_message_max_chars)
+            token_cost = self._estimate_tokens(compact) + 8
+            if used_tokens + token_cost > history_budget:
+                if len(selected_rev) < self.min_recent_history_messages:
+                    remaining_chars = max(120, (history_budget - used_tokens) * 4)
+                    clipped = self._compact_text(
+                        content,
+                        min(remaining_chars, self.history_message_max_chars),
+                    )
+                    selected_rev.append({"role": role, "content": clipped})
+                    used_tokens += self._estimate_tokens(clipped) + 8
+                    continue
+                break
+
+            selected_rev.append({"role": role, "content": compact})
+            used_tokens += token_cost
+
+        if not selected_rev:
+            last = history[-1]
+            return [
+                {
+                    "role": str(last.get("role", "user")),
+                    "content": self._compact_text(str(last.get("content", "")), 240),
+                }
+            ]
+
+        return list(reversed(selected_rev))
+
+    @staticmethod
+    def _estimate_tokens(text: str) -> int:
+        """Approximate tokens by character count to avoid tokenizer dependency."""
+        if not text:
+            return 0
+        return max(1, len(text) // 4)
+
+    @staticmethod
+    def _compact_text(text: str, max_chars: int) -> str:
+        """Compact long text with truncation hint."""
+        if len(text) <= max_chars:
+            return text
+        return f"{text[:max_chars]} ...[truncated {len(text) - max_chars} chars]"

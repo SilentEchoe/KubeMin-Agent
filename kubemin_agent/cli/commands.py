@@ -90,6 +90,10 @@ def agent(
         workspace=workspace,
         model=config.agents.defaults.model,
         max_iterations=config.agents.defaults.max_tool_iterations,
+        max_context_tokens=config.agents.defaults.max_context_tokens,
+        min_recent_history_messages=config.agents.defaults.min_recent_history_messages,
+        task_anchor_max_chars=config.agents.defaults.task_anchor_max_chars,
+        history_message_max_chars=config.agents.defaults.history_message_max_chars,
     )
 
     if message:
@@ -204,6 +208,10 @@ def gateway(
             provider=provider,
             workspace=workspace,
             model=config.agents.defaults.model,
+            max_context_tokens=config.agents.defaults.max_context_tokens,
+            min_recent_history_messages=config.agents.defaults.min_recent_history_messages,
+            task_anchor_max_chars=config.agents.defaults.task_anchor_max_chars,
+            history_message_max_chars=config.agents.defaults.history_message_max_chars,
         )
         tasks = [
             asyncio.create_task(agent_loop.run()),

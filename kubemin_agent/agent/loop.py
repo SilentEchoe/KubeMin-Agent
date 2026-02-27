@@ -34,6 +34,10 @@ class AgentLoop:
         workspace: Path,
         model: str | None = None,
         max_iterations: int = 20,
+        max_context_tokens: int = 6000,
+        min_recent_history_messages: int = 4,
+        task_anchor_max_chars: int = 600,
+        history_message_max_chars: int = 1200,
     ) -> None:
         self.bus = bus
         self.provider = provider
@@ -41,7 +45,13 @@ class AgentLoop:
         self.model = model
         self.max_iterations = max_iterations
 
-        self.context = ContextBuilder(workspace)
+        self.context = ContextBuilder(
+            workspace,
+            max_context_tokens=max_context_tokens,
+            min_recent_history_messages=min_recent_history_messages,
+            task_anchor_max_chars=task_anchor_max_chars,
+            history_message_max_chars=history_message_max_chars,
+        )
         self.tools = ToolRegistry()
         self.sessions = SessionManager(workspace)
         self.subagents = SubagentManager()
@@ -102,7 +112,7 @@ class AgentLoop:
             # Call LLM
             tool_definitions = self.tools.get_definitions() if len(self.tools) > 0 else None
             response = await self.provider.chat(
-                messages=messages,
+                messages=messages + [{"role": "system", "content": self.context.build_task_reminder(msg.content)}],
                 tools=tool_definitions,
                 model=self.model,
             )
