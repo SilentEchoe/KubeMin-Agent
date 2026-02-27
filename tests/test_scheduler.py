@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import json
 import time
 from pathlib import Path
 
 import pytest
 
 from kubemin_agent.control.audit import AuditLog
+from kubemin_agent.control.evaluation import EvaluationResult, ExecutionEvaluator
 from kubemin_agent.control.registry import AgentRegistry
 from kubemin_agent.control.scheduler import DispatchPlan, Scheduler, SubTask
 from kubemin_agent.control.validator import Validator
@@ -57,6 +59,28 @@ def _build_scheduler(tmp_path: Path, max_parallelism: int = 4) -> tuple[Schedule
         max_parallelism=max_parallelism,
     )
     return scheduler, registry
+
+
+class LowScoreEvaluator(ExecutionEvaluator):
+    async def evaluate(  # type: ignore[override]
+        self,
+        *,
+        agent_name: str,
+        task_description: str,
+        final_output: str,
+        trace_events: list[dict],
+        validation,
+    ) -> EvaluationResult:
+        return EvaluationResult(
+            overall_score=45,
+            dimension_scores={"completeness": 40, "execution_health": 60, "efficiency": 50},
+            passed=False,
+            warn_threshold=60,
+            reasons=["quality below threshold"],
+            suggestions=["improve final answer clarity"],
+            rule_score=50,
+            llm_score=40,
+        )
 
 
 @pytest.mark.asyncio
@@ -148,7 +172,7 @@ async def test_scheduler_execute_saved_plan(tmp_path: Path) -> None:
         session_key="cli:test_plan_execute",
         plan_mode=True,
     )
-    
+
     assert scheduler.sessions.get_plan("cli:test_plan_execute") is not None
 
     # Act 2: Execute the saved plan
@@ -159,3 +183,44 @@ async def test_scheduler_execute_saved_plan(tmp_path: Path) -> None:
     # Assert: Execution happened and plan is cleared
     assert "general:noop" in response
     assert scheduler.sessions.get_plan("cli:test_plan_execute") is None
+
+
+@pytest.mark.asyncio
+async def test_scheduler_writes_evaluation_and_keeps_response(tmp_path: Path) -> None:
+    registry = AgentRegistry()
+    audit = AuditLog(tmp_path)
+    scheduler = Scheduler(
+        provider=StubProvider(),
+        registry=registry,
+        validator=Validator(),
+        audit=audit,
+        sessions=SessionManager(tmp_path / "workspace"),
+        evaluator=LowScoreEvaluator(),
+    )
+    registry.register(StubAgent("general"))
+
+    plan = DispatchPlan(
+        tasks=[SubTask(task_id="t1", agent_name="general", description="evaluate-me")],
+        execution_mode="sequential",
+    )
+
+    output = await scheduler.execute_plan(
+        plan=plan,
+        original_message="root",
+        session_key="cli:test_eval",
+        request_id="req-eval",
+    )
+
+    assert "general:evaluate-me" in output
+
+    entries = [
+        json.loads(line)
+        for line in audit._log_file().read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    evaluation_entries = [entry for entry in entries if entry.get("type") == "evaluation"]
+
+    assert len(evaluation_entries) == 1
+    assert evaluation_entries[0]["passed"] is False
+    assert evaluation_entries[0]["overall_score"] == 45
+    assert evaluation_entries[0]["task_id"] == "t1"

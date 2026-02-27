@@ -32,6 +32,8 @@ GeneralAgent (extends BaseAgent)
 | 功能 | 状态 | 说明 |
 |------|------|------|
 | 中控调度接入 | 已实现 | 通过 ControlPlaneRuntime 注册到 AgentRegistry, 由 Scheduler 调度 |
+| 执行轨迹摘要 | 已实现 | 在工具调用前后产出 `reasoning_step` 结构化执行摘要 |
+| 在线质量评估 | 已实现 | Scheduler 执行后写入 `evaluation` 审计事件 |
 | 文件读写 | 已实现 | ReadFileTool + WriteFileTool, workspace 沙箱限制 |
 | Shell 命令执行 | 已实现 | ShellTool, 命令白名单 + 危险模式阻断 |
 | Web 搜索 | 规划中 | 搜索引擎查询和网页抓取 |
@@ -60,11 +62,13 @@ GeneralAgent (extends BaseAgent)
 | Fallback 定位 | 明确分工, 专职 Agent 优先 | 全能 Agent (放弃: 职责不清, system prompt 过长) |
 | Workspace 沙箱 | 最小权限原则, 防止越权 | 全文件系统访问 (放弃: 安全风险) |
 | Shell 白名单策略 | 动态黑名单容易遗漏危险命令 | 黑名单 (放弃: 不完备) |
+| 结构化轨迹而非完整思维链 | 保证可观测同时规避敏感推理泄露风险 | 记录完整 CoT (放弃: 风险高且噪音大) |
 
 ## 变更日志
 
 | 日期 | 变更 | 原因 |
 |------|------|------|
+| 2026-02-27 | 接入在线评估与 `reasoning_step` 结构化轨迹 | 解决执行黑盒问题, 提升可观测性 |
 | 2026-02-26 | 实现 ReadFileTool + WriteFileTool + ShellTool | MVP 工具集, 使 GeneralAgent 可实际处理用户请求 |
 | 2026-02-26 | 接入中控运行时, 由 Scheduler 默认调度执行 | 落地 Agent Control Plane 主链路 |
 | 2025-02 | 初始设计, 定义 fallback 定位和安全约束 | 项目初始化 |

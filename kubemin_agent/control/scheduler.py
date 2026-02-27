@@ -3,19 +3,21 @@
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import json
 import time
 import uuid
 from dataclasses import dataclass, field
+from typing import Any
 
 from loguru import logger
 
 from kubemin_agent.control.audit import AuditLog
+from kubemin_agent.control.evaluation import ExecutionEvaluator
 from kubemin_agent.control.registry import AgentRegistry
 from kubemin_agent.control.validator import Validator
 from kubemin_agent.providers.base import LLMProvider
 from kubemin_agent.session.manager import SessionManager
-import dataclasses
 
 
 @dataclass
@@ -96,6 +98,9 @@ class Scheduler:
         validator: Validator,
         audit: AuditLog,
         sessions: SessionManager,
+        evaluator: ExecutionEvaluator | None = None,
+        trace_capture: bool = True,
+        max_trace_steps: int = 50,
         max_parallelism: int = 4,
         fail_fast: bool = False,
     ) -> None:
@@ -104,6 +109,9 @@ class Scheduler:
         self.validator = validator
         self.audit = audit
         self.sessions = sessions
+        self.evaluator = evaluator
+        self.trace_capture = trace_capture
+        self.max_trace_steps = max(1, max_trace_steps)
         self.max_parallelism = max(1, max_parallelism)
         self.fail_fast = fail_fast
 
@@ -138,7 +146,7 @@ class Scheduler:
                 "original_message": message,
             }
             self.sessions.save_plan(session_key, plan_data)
-            
+
             output = "[📝 Pending Plan]\n"
             output += f"Execution Mode: {plan.execution_mode}\n\n"
             for t in plan.tasks:
@@ -436,11 +444,13 @@ class Scheduler:
             message=original_message,
             agent_name=agent.name,
             task_description=task.description,
+            task_id=task.task_id,
             request_id=request_id,
         )
 
         start_time = time.monotonic()
         failed = False
+        self._prepare_agent_trace(agent=agent, task_id=task.task_id)
 
         try:
             result = await agent.run(task.description, session_key, request_id=request_id)
@@ -450,6 +460,7 @@ class Scheduler:
                 agent_name=agent.name,
                 result_preview=result,
                 duration_ms=duration_ms,
+                task_id=task.task_id,
                 success=True,
                 request_id=request_id,
             )
@@ -462,10 +473,13 @@ class Scheduler:
                 agent_name=agent.name,
                 result_preview=result,
                 duration_ms=duration_ms,
+                task_id=task.task_id,
                 success=False,
                 request_id=request_id,
             )
             logger.error(f"Agent execution failed: {agent.name} - {e}")
+
+        trace_events = self._consume_agent_trace(agent)
 
         validation = await self.validator.validate(
             agent_name=agent.name,
@@ -478,11 +492,22 @@ class Scheduler:
             session_key=session_key,
             agent_name=agent.name,
             passed=validation.passed,
+            task_id=task.task_id,
             reason=validation.reason,
             request_id=request_id,
             severity=validation.severity,
             policy_id=validation.policy_id,
             redactions=validation.redactions,
+        )
+
+        await self._evaluate_task(
+            agent=agent,
+            task=task,
+            session_key=session_key,
+            request_id=request_id,
+            final_output=sanitized,
+            trace_events=trace_events,
+            validation=validation,
         )
 
         if not validation.passed:
@@ -496,3 +521,68 @@ class Scheduler:
             sanitized = f"[Validation Warning] {validation.reason}\n\n{sanitized}"
 
         return TaskExecutionResult(task_id=task.task_id, content=sanitized, failed=failed)
+
+    def _prepare_agent_trace(self, agent: Any, task_id: str) -> None:
+        """Inject trace context/config into agents that support it."""
+        set_trace_context = getattr(agent, "set_trace_context", None)
+        if callable(set_trace_context):
+            set_trace_context(task_id=task_id)
+
+        set_trace_capture = getattr(agent, "set_trace_capture", None)
+        if callable(set_trace_capture):
+            set_trace_capture(enabled=self.trace_capture, max_steps=self.max_trace_steps)
+
+    def _consume_agent_trace(self, agent: Any) -> list[dict[str, Any]]:
+        """Collect and clear latest trace events from agent when available."""
+        consume_trace_events = getattr(agent, "consume_trace_events", None)
+        if callable(consume_trace_events):
+            try:
+                events = consume_trace_events()
+                if isinstance(events, list):
+                    return events
+            except Exception as e:  # noqa: BLE001
+                logger.warning(f"Failed to consume agent trace events: {e}")
+        return []
+
+    async def _evaluate_task(
+        self,
+        *,
+        agent: Any,
+        task: SubTask,
+        session_key: str,
+        request_id: str,
+        final_output: str,
+        trace_events: list[dict[str, Any]],
+        validation: Any,
+    ) -> None:
+        """Evaluate task execution and write evaluation audit logs."""
+        if not self.evaluator:
+            return
+
+        try:
+            evaluation = await self.evaluator.evaluate(
+                agent_name=agent.name,
+                task_description=task.description,
+                final_output=final_output,
+                trace_events=trace_events,
+                validation=validation,
+            )
+            self.audit.log_evaluation(
+                session_key=session_key,
+                agent_name=agent.name,
+                task_id=task.task_id,
+                overall_score=evaluation.overall_score,
+                dimension_scores=evaluation.dimension_scores,
+                passed=evaluation.passed,
+                warn_threshold=evaluation.warn_threshold,
+                reasons=evaluation.reasons,
+                suggestions=evaluation.suggestions,
+                request_id=request_id,
+            )
+            if not evaluation.passed:
+                logger.warning(
+                    f"Evaluation warning: agent={agent.name}, task={task.task_id}, "
+                    f"score={evaluation.overall_score}/{evaluation.warn_threshold}"
+                )
+        except Exception as e:  # noqa: BLE001
+            logger.warning(f"Task evaluation failed for agent={getattr(agent, 'name', '?')}: {e}")

@@ -50,6 +50,7 @@ class AuditLog:
         message: str,
         agent_name: str,
         task_description: str,
+        task_id: str = "",
         request_id: str = "",
     ) -> None:
         """Log a scheduling dispatch decision."""
@@ -60,6 +61,7 @@ class AuditLog:
                 "session_key": session_key,
                 "message_preview": message[:200],
                 "target_agent": agent_name,
+                "task_id": task_id,
                 "task_description": task_description,
             }
         )
@@ -71,6 +73,7 @@ class AuditLog:
         agent_name: str,
         result_preview: str,
         duration_ms: float,
+        task_id: str = "",
         success: bool = True,
         request_id: str = "",
     ) -> None:
@@ -81,6 +84,7 @@ class AuditLog:
                 "request_id": request_id,
                 "session_key": session_key,
                 "agent_name": agent_name,
+                "task_id": task_id,
                 "result_preview": result_preview[:200],
                 "duration_ms": round(duration_ms, 2),
                 "success": success,
@@ -94,6 +98,7 @@ class AuditLog:
         session_key: str,
         agent_name: str,
         passed: bool,
+        task_id: str = "",
         reason: str = "",
         request_id: str = "",
         severity: str = "info",
@@ -107,6 +112,7 @@ class AuditLog:
                 "request_id": request_id,
                 "session_key": session_key,
                 "agent_name": agent_name,
+                "task_id": task_id,
                 "passed": passed,
                 "reason": reason,
                 "severity": severity,
@@ -126,6 +132,7 @@ class AuditLog:
         result_preview: str,
         duration_ms: float,
         success: bool,
+        task_id: str = "",
         request_id: str = "",
     ) -> None:
         """Log one tool invocation from a sub-agent."""
@@ -135,10 +142,73 @@ class AuditLog:
                 "request_id": request_id,
                 "session_key": session_key,
                 "agent_name": agent_name,
+                "task_id": task_id,
                 "tool_name": tool_name,
                 "params_preview": self._preview(params),
                 "result_preview": self._preview(result_preview),
                 "duration_ms": round(duration_ms, 2),
                 "success": success,
+            }
+        )
+
+    def log_reasoning_step(
+        self,
+        session_key: str,
+        agent_name: str,
+        task_id: str,
+        step_index: int,
+        phase: str,
+        intent_summary: str,
+        action: str,
+        observation_summary: str,
+        confidence: float | None = None,
+        error: str = "",
+        request_id: str = "",
+    ) -> None:
+        """Log one structured reasoning step from a sub-agent run."""
+        self._write(
+            {
+                "type": "reasoning_step",
+                "request_id": request_id,
+                "session_key": session_key,
+                "agent_name": agent_name,
+                "task_id": task_id,
+                "step_index": step_index,
+                "phase": phase,
+                "intent_summary": self._preview(intent_summary),
+                "action": self._preview(action),
+                "observation_summary": self._preview(observation_summary),
+                "confidence": confidence,
+                "error": self._preview(error),
+            }
+        )
+
+    def log_evaluation(
+        self,
+        session_key: str,
+        agent_name: str,
+        task_id: str,
+        overall_score: int,
+        dimension_scores: dict[str, int],
+        passed: bool,
+        warn_threshold: int,
+        reasons: list[str] | None = None,
+        suggestions: list[str] | None = None,
+        request_id: str = "",
+    ) -> None:
+        """Log an execution evaluation result."""
+        self._write(
+            {
+                "type": "evaluation",
+                "request_id": request_id,
+                "session_key": session_key,
+                "agent_name": agent_name,
+                "task_id": task_id,
+                "overall_score": overall_score,
+                "dimension_scores": dimension_scores,
+                "passed": passed,
+                "warn_threshold": warn_threshold,
+                "reasons": reasons or [],
+                "suggestions": suggestions or [],
             }
         )

@@ -39,6 +39,15 @@
 - 端到端复杂协作流 (Multi-Agent Orchestration) 测试
 - 打通 Cron / Heartbeat 到统一控制面入口
 
+### 0.4 增量更新（2026-02-27）
+
+新增“在线评估与执行可观测”能力（详见 `docs/agent-evaluation-observability-plan.md`）:
+
+- 引入 `ExecutionEvaluator` 进行任务执行质量在线评分（规则 + LLM 混合）
+- 运行链路新增 `reasoning_step` 结构化轨迹事件（不记录完整 CoT）
+- 审计新增 `evaluation` 事件，记录总分、维度分、原因与改进建议
+- 默认策略为“仅观测告警，不阻断主流程响应”
+
 ---
 
 ## 1. 项目定位与目标

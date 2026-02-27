@@ -105,6 +105,17 @@ class ControlConfig(BaseModel):
     fail_fast: bool = False
 
 
+class EvaluationConfig(BaseModel):
+    """Online execution evaluation configuration."""
+
+    enabled: bool = True
+    mode: str = "online"
+    warn_threshold: int = 60
+    llm_judge_enabled: bool = True
+    trace_capture: bool = True
+    max_trace_steps: int = 50
+
+
 class ValidatorConfig(BaseModel):
     """Validator configuration."""
 
@@ -121,6 +132,7 @@ class Config(BaseSettings):
     tools: ToolsConfig = Field(default_factory=ToolsConfig)
     kubemin: KubeMinConfig = Field(default_factory=KubeMinConfig)
     control: ControlConfig = Field(default_factory=ControlConfig)
+    evaluation: EvaluationConfig = Field(default_factory=EvaluationConfig)
     validator: ValidatorConfig = Field(default_factory=ValidatorConfig)
 
     @property

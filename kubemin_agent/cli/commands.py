@@ -135,6 +135,12 @@ def status(
     table.add_row("Control Plane", "Enabled" if config.control.enabled else "Disabled")
     table.add_row("Control Max Parallel", str(config.control.max_parallelism))
     table.add_row("Control Fail Fast", str(config.control.fail_fast))
+    table.add_row("Evaluation", "Enabled" if config.evaluation.enabled else "Disabled")
+    table.add_row("Evaluation Mode", config.evaluation.mode)
+    table.add_row("Evaluation Warn Threshold", str(config.evaluation.warn_threshold))
+    table.add_row("Evaluation LLM Judge", "Enabled" if config.evaluation.llm_judge_enabled else "Disabled")
+    table.add_row("Evaluation Trace Capture", "Enabled" if config.evaluation.trace_capture else "Disabled")
+    table.add_row("Evaluation Max Trace Steps", str(config.evaluation.max_trace_steps))
     table.add_row("Validator Policy", config.validator.policy_level)
 
     table.add_row("Telegram", "Enabled" if config.channels.telegram.enabled else "Disabled")

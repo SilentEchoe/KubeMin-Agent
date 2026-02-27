@@ -31,6 +31,8 @@ WorkflowAgent (extends BaseAgent)
 | 功能 | 状态 | 说明 |
 |------|------|------|
 | 中控调度接入 | 已实现 | 通过 ControlPlaneRuntime 注册到 AgentRegistry, 由 Scheduler 调度 |
+| 执行轨迹摘要 | 已实现 | 在工具调用前后产出 `reasoning_step` 结构化执行摘要 |
+| 在线质量评估 | 已实现 | Scheduler 执行后写入 `evaluation` 审计事件 |
 | 自然语言生成 Workflow YAML | 已实现 | 通过 LLM 将用户描述转为 YAML |
 | 步骤依赖优化 | 已实现 | 自动分析和优化步骤执行顺序 |
 | YAML 校验 | 规划中 | 结构性校验 Workflow 配置 |
@@ -59,11 +61,13 @@ WorkflowAgent (extends BaseAgent)
 | LLM 生成而非模板填充 | 模板难以覆盖所有场景, LLM 更灵活 | 参数化模板 (放弃: 扩展性差) |
 | 只生成不执行 | 用户审核后再 apply 更安全 | 自动 apply (放弃: 误操作风险) |
 | system prompt 内置规范 | 规范变化频率低, 免去额外文件加载 | 运行时加载规范文件 (放弃: 增加复杂度) |
+| 结构化轨迹而非完整思维链 | 提升调试可观测性且避免泄露完整推理 | 记录完整 CoT (放弃: 风险高) |
 
 ## 变更日志
 
 | 日期 | 变更 | 原因 |
 |------|------|------|
+| 2026-02-27 | 接入在线评估与 `reasoning_step` 结构化轨迹 | 提升 YAML 生成任务质量评估能力 |
 | 2026-02-26 | 实现 ReadFileTool + WriteFileTool + YAMLValidatorTool | MVP 工具集 |
 | 2026-02-26 | 接入中控运行时, 默认经 Scheduler 调度 | 落地 Agent Control Plane 主链路 |
 | 2025-02 | 初始设计, 定义 YAML 生成和 Trait 配置能力 | 项目初始化 |

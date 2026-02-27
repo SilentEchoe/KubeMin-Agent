@@ -1,6 +1,7 @@
 """Control plane module for KubeMin-Agent."""
 
 from kubemin_agent.control.audit import AuditLog
+from kubemin_agent.control.evaluation import EvaluationResult, ExecutionEvaluator, HybridEvaluator
 from kubemin_agent.control.registry import AgentInfo, AgentRegistry
 from kubemin_agent.control.runtime import ControlPlaneRuntime
 from kubemin_agent.control.scheduler import DispatchPlan, Scheduler, SubTask
@@ -10,6 +11,9 @@ __all__ = [
     "AgentRegistry",
     "AgentInfo",
     "AuditLog",
+    "ExecutionEvaluator",
+    "HybridEvaluator",
+    "EvaluationResult",
     "Validator",
     "ValidationResult",
     "Scheduler",

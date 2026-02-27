@@ -36,9 +36,14 @@ class BaseAgent(ABC):
         self.sessions = sessions
         self._audit = audit
         self._workspace = workspace or Path.cwd()
+        self._trace_task_id = ""
+        self._trace_capture_enabled = True
+        self._max_trace_steps = 50
+        self._trace_events: list[dict[str, Any]] = []
+        self._trace_step_index = 0
         self.tools = ToolRegistry()
         self._register_tools()
-        
+
         # Enforce allowlist if defined
         if getattr(self, "allowed_tools", None) is not None:
             registered_names = self.tools.tool_names
@@ -95,9 +100,19 @@ class BaseAgent(ABC):
             The agent's response.
         """
         history = self.sessions.get_history(session_key)
+        self._trace_events = []
+        self._trace_step_index = 0
         messages: list[dict[str, Any]] = [{"role": "system", "content": self.system_prompt}]
         messages.extend(history[-10:])
         messages.append({"role": "user", "content": message})
+        self._record_reasoning_step(
+            session_key=session_key,
+            phase="plan",
+            intent_summary="开始执行任务",
+            action="task_start",
+            observation_summary=message,
+            request_id=request_id,
+        )
 
         for _ in range(self.MAX_ITERATIONS):
             tool_defs = self.tools.get_definitions() if len(self.tools) > 0 else None
@@ -108,6 +123,14 @@ class BaseAgent(ABC):
             )
 
             if not response.has_tool_calls:
+                self._record_reasoning_step(
+                    session_key=session_key,
+                    phase="synthesis",
+                    intent_summary="汇总结果并生成最终回答",
+                    action="respond",
+                    observation_summary=response.content or "",
+                    request_id=request_id,
+                )
                 return response.content or ""
 
             messages.append(
@@ -130,6 +153,14 @@ class BaseAgent(ABC):
 
             for tc in response.tool_calls:
                 logger.debug(f"[{self.name}] Executing tool: {tc.name}")
+                self._record_reasoning_step(
+                    session_key=session_key,
+                    phase="tool_call",
+                    intent_summary="执行工具调用",
+                    action=f"tool:{tc.name}",
+                    observation_summary=json.dumps(tc.arguments, ensure_ascii=False),
+                    request_id=request_id,
+                )
                 start_time = time.monotonic()
                 result = await self.tools.execute(tc.name, tc.arguments)
                 duration_ms = (time.monotonic() - start_time) * 1000
@@ -143,6 +174,15 @@ class BaseAgent(ABC):
                     success=success,
                     request_id=request_id,
                 )
+                self._record_reasoning_step(
+                    session_key=session_key,
+                    phase="tool_observation",
+                    intent_summary="记录工具执行结果",
+                    action=f"tool:{tc.name}",
+                    observation_summary=result,
+                    error="" if success else result,
+                    request_id=request_id,
+                )
 
                 messages.append(
                     {
@@ -154,6 +194,21 @@ class BaseAgent(ABC):
                 )
 
         return "Reached maximum tool iterations. Please try a simpler request."
+
+    def set_trace_context(self, task_id: str = "") -> None:
+        """Set per-run trace context from scheduler."""
+        self._trace_task_id = task_id
+
+    def set_trace_capture(self, enabled: bool, max_steps: int = 50) -> None:
+        """Configure trace capture behavior."""
+        self._trace_capture_enabled = enabled
+        self._max_trace_steps = max(1, max_steps)
+
+    def consume_trace_events(self) -> list[dict[str, Any]]:
+        """Return and clear captured trace events for the latest run."""
+        events = list(self._trace_events)
+        self._trace_events = []
+        return events
 
     def _log_tool_call(
         self,
@@ -178,7 +233,70 @@ class BaseAgent(ABC):
                 result_preview=result_preview,
                 duration_ms=duration_ms,
                 success=success,
+                task_id=self._trace_task_id,
                 request_id=request_id,
             )
         except Exception as e:  # noqa: BLE001
             logger.warning(f"Failed to write tool audit log: {e}")
+
+    def _record_reasoning_step(
+        self,
+        *,
+        session_key: str,
+        phase: str,
+        intent_summary: str,
+        action: str,
+        observation_summary: str,
+        request_id: str,
+        confidence: float | None = None,
+        error: str = "",
+    ) -> None:
+        """Capture structured reasoning step and emit audit event when enabled."""
+        if not self._trace_capture_enabled:
+            return
+        if self._trace_step_index >= self._max_trace_steps:
+            return
+
+        self._trace_step_index += 1
+        event = {
+            "step_index": self._trace_step_index,
+            "phase": phase,
+            "intent_summary": self._preview(intent_summary),
+            "action": self._preview(action),
+            "observation_summary": self._preview(observation_summary),
+            "confidence": confidence,
+            "error": self._preview(error),
+        }
+        self._trace_events.append(event)
+
+        if not self._audit:
+            return
+
+        try:
+            self._audit.log_reasoning_step(
+                session_key=session_key,
+                agent_name=self.name,
+                task_id=self._trace_task_id,
+                step_index=event["step_index"],
+                phase=phase,
+                intent_summary=event["intent_summary"],
+                action=event["action"],
+                observation_summary=event["observation_summary"],
+                confidence=confidence,
+                error=event["error"],
+                request_id=request_id,
+            )
+        except Exception as e:  # noqa: BLE001
+            logger.warning(f"Failed to write reasoning-step audit log: {e}")
+
+    @staticmethod
+    def _preview(value: Any, limit: int = 220) -> str:
+        """Convert values into compact text for trace logging."""
+        if isinstance(value, str):
+            text = value
+        else:
+            try:
+                text = json.dumps(value, ensure_ascii=False)
+            except TypeError:
+                text = str(value)
+        return text[:limit]

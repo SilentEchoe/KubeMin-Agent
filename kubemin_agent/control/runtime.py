@@ -15,6 +15,7 @@ from kubemin_agent.bus.events import OutboundMessage
 from kubemin_agent.bus.queue import MessageBus
 from kubemin_agent.config.schema import Config
 from kubemin_agent.control.audit import AuditLog
+from kubemin_agent.control.evaluation import HybridEvaluator
 from kubemin_agent.control.registry import AgentRegistry
 from kubemin_agent.control.scheduler import Scheduler
 from kubemin_agent.control.validator import Validator
@@ -30,6 +31,11 @@ class ControlPlaneRuntime:
         provider: LLMProvider,
         workspace: Path,
         model: str | None = None,
+        evaluation_enabled: bool = True,
+        evaluation_warn_threshold: int = 60,
+        evaluation_llm_judge_enabled: bool = True,
+        trace_capture: bool = True,
+        max_trace_steps: int = 50,
         max_parallelism: int = 4,
         fail_fast: bool = False,
     ) -> None:
@@ -40,6 +46,15 @@ class ControlPlaneRuntime:
         self.sessions = SessionManager(workspace)
         self.audit = AuditLog(workspace.parent)
         self.validator = Validator()
+        self.evaluator = (
+            HybridEvaluator(
+                provider=provider,
+                warn_threshold=evaluation_warn_threshold,
+                llm_judge_enabled=evaluation_llm_judge_enabled,
+            )
+            if evaluation_enabled
+            else None
+        )
         self.registry = AgentRegistry()
         self.scheduler = Scheduler(
             provider=provider,
@@ -47,6 +62,9 @@ class ControlPlaneRuntime:
             validator=self.validator,
             audit=self.audit,
             sessions=self.sessions,
+            evaluator=self.evaluator,
+            trace_capture=trace_capture,
+            max_trace_steps=max_trace_steps,
             max_parallelism=max_parallelism,
             fail_fast=fail_fast,
         )
@@ -66,6 +84,11 @@ class ControlPlaneRuntime:
             provider=provider,
             workspace=workspace,
             model=config.agents.defaults.model,
+            evaluation_enabled=config.evaluation.enabled,
+            evaluation_warn_threshold=config.evaluation.warn_threshold,
+            evaluation_llm_judge_enabled=config.evaluation.llm_judge_enabled,
+            trace_capture=config.evaluation.trace_capture,
+            max_trace_steps=config.evaluation.max_trace_steps,
             max_parallelism=config.control.max_parallelism,
             fail_fast=config.control.fail_fast,
         )
@@ -92,7 +115,7 @@ class ControlPlaneRuntime:
         """Handle one inbound message through control plane dispatch."""
         session_key = f"{channel}:{chat_id}"
         dispatch_id = request_id or uuid.uuid4().hex[:12]
-        
+
         stripped = content.strip()
         if stripped.startswith("/plan "):
             return await self.scheduler.dispatch(
@@ -106,7 +129,7 @@ class ControlPlaneRuntime:
                 session_key=session_key,
                 request_id=dispatch_id,
             )
-            
+
         return await self.scheduler.dispatch(
             message=content,
             session_key=session_key,
