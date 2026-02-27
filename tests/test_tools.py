@@ -19,124 +19,118 @@ def workspace(tmp_path):
 # --- ReadFileTool ---
 
 class TestReadFileTool:
-    def test_read_existing_file(self, workspace):
+    @pytest.mark.asyncio
+    async def test_read_existing_file(self, workspace):
         (workspace / "hello.txt").write_text("Hello, World!")
         tool = ReadFileTool(workspace)
-        result = asyncio.get_event_loop().run_until_complete(tool.execute(path="hello.txt"))
+        result = await tool.execute(path="hello.txt")
         assert result == "Hello, World!"
 
-    def test_read_nonexistent_file(self, workspace):
+    @pytest.mark.asyncio
+    async def test_read_nonexistent_file(self, workspace):
         tool = ReadFileTool(workspace)
-        result = asyncio.get_event_loop().run_until_complete(tool.execute(path="nope.txt"))
+        result = await tool.execute(path="nope.txt")
         assert "not found" in result
 
-    def test_read_outside_workspace(self, workspace):
+    @pytest.mark.asyncio
+    async def test_read_outside_workspace(self, workspace):
         tool = ReadFileTool(workspace)
-        result = asyncio.get_event_loop().run_until_complete(tool.execute(path="/etc/passwd"))
+        result = await tool.execute(path="/etc/passwd")
         assert "outside workspace" in result
 
-    def test_read_sensitive_file(self, workspace):
+    @pytest.mark.asyncio
+    async def test_read_sensitive_file(self, workspace):
         (workspace / ".env").write_text("SECRET=xxx")
         tool = ReadFileTool(workspace)
-        result = asyncio.get_event_loop().run_until_complete(tool.execute(path=".env"))
+        result = await tool.execute(path=".env")
         assert "denied" in result or "sensitive" in result
 
 
 # --- WriteFileTool ---
 
 class TestWriteFileTool:
-    def test_write_new_file(self, workspace):
+    @pytest.mark.asyncio
+    async def test_write_new_file(self, workspace):
         tool = WriteFileTool(workspace)
-        result = asyncio.get_event_loop().run_until_complete(
-            tool.execute(path="output.txt", content="test content")
-        )
+        result = await tool.execute(path="output.txt", content="test content")
         assert "Successfully" in result
         assert (workspace / "output.txt").read_text() == "test content"
 
-    def test_write_creates_parent_dirs(self, workspace):
+    @pytest.mark.asyncio
+    async def test_write_creates_parent_dirs(self, workspace):
         tool = WriteFileTool(workspace)
-        result = asyncio.get_event_loop().run_until_complete(
-            tool.execute(path="sub/dir/file.txt", content="nested")
-        )
+        result = await tool.execute(path="sub/dir/file.txt", content="nested")
         assert "Successfully" in result
         assert (workspace / "sub" / "dir" / "file.txt").read_text() == "nested"
 
-    def test_write_outside_workspace(self, workspace):
+    @pytest.mark.asyncio
+    async def test_write_outside_workspace(self, workspace):
         tool = WriteFileTool(workspace)
-        result = asyncio.get_event_loop().run_until_complete(
-            tool.execute(path="/tmp/escape.txt", content="bad")
-        )
+        result = await tool.execute(path="/tmp/escape.txt", content="bad")
         assert "outside workspace" in result
 
 
 # --- ShellTool ---
 
 class TestShellTool:
-    def test_allowed_command(self):
+    @pytest.mark.asyncio
+    async def test_allowed_command(self):
         tool = ShellTool()
-        result = asyncio.get_event_loop().run_until_complete(
-            tool.execute(command="echo hello")
-        )
+        result = await tool.execute(command="echo hello")
         assert "hello" in result
 
-    def test_blocked_command_sudo(self):
+    @pytest.mark.asyncio
+    async def test_blocked_command_sudo(self):
         tool = ShellTool()
-        result = asyncio.get_event_loop().run_until_complete(
-            tool.execute(command="sudo ls")
-        )
+        result = await tool.execute(command="sudo ls")
         assert "blocked" in result.lower() or "not in the allowed" in result.lower()
 
-    def test_blocked_command_rm_rf(self):
+    @pytest.mark.asyncio
+    async def test_blocked_command_rm_rf(self):
         tool = ShellTool()
-        result = asyncio.get_event_loop().run_until_complete(
-            tool.execute(command="rm -rf /")
-        )
+        result = await tool.execute(command="rm -rf /")
         assert "blocked" in result.lower() or "not in the allowed" in result.lower()
 
-    def test_unknown_command_blocked(self):
+    @pytest.mark.asyncio
+    async def test_unknown_command_blocked(self):
         tool = ShellTool()
-        result = asyncio.get_event_loop().run_until_complete(
-            tool.execute(command="dangerous_custom_tool --delete-all")
-        )
+        result = await tool.execute(command="dangerous_custom_tool --delete-all")
         assert "not in the allowed" in result
 
 
 # --- KubectlTool ---
 
 class TestKubectlTool:
-    def test_blocked_write_command(self):
+    @pytest.mark.asyncio
+    async def test_blocked_write_command(self):
         tool = KubectlTool()
-        result = asyncio.get_event_loop().run_until_complete(
-            tool.execute(command="apply -f deployment.yaml")
-        )
+        result = await tool.execute(command="apply -f deployment.yaml")
         assert "blocked" in result
 
-    def test_blocked_delete_command(self):
+    @pytest.mark.asyncio
+    async def test_blocked_delete_command(self):
         tool = KubectlTool()
-        result = asyncio.get_event_loop().run_until_complete(
-            tool.execute(command="delete pod my-pod")
-        )
+        result = await tool.execute(command="delete pod my-pod")
         assert "blocked" in result
 
-    def test_unknown_subcommand_blocked(self):
+    @pytest.mark.asyncio
+    async def test_unknown_subcommand_blocked(self):
         tool = KubectlTool()
-        result = asyncio.get_event_loop().run_until_complete(
-            tool.execute(command="exec -it pod -- bash")
-        )
+        result = await tool.execute(command="exec -it pod -- bash")
         assert "blocked" in result
 
-    def test_namespace_restriction(self):
+    @pytest.mark.asyncio
+    async def test_namespace_restriction(self):
         tool = KubectlTool(allowed_namespaces=["default", "staging"])
-        result = asyncio.get_event_loop().run_until_complete(
-            tool.execute(command="get pods -n production")
-        )
+        result = await tool.execute(command="get pods -n production")
         assert "not allowed" in result
 
 
 # --- YAMLValidatorTool ---
 
 class TestYAMLValidatorTool:
-    def test_valid_yaml(self):
+    @pytest.mark.asyncio
+    async def test_valid_yaml(self):
         tool = YAMLValidatorTool()
         content = """
 apiVersion: v1
@@ -147,26 +141,22 @@ spec:
   ports:
     - port: 80
 """
-        result = asyncio.get_event_loop().run_until_complete(
-            tool.execute(content=content)
-        )
+        result = await tool.execute(content=content)
         assert "VALID" in result
 
-    def test_invalid_syntax(self):
+    @pytest.mark.asyncio
+    async def test_invalid_syntax(self):
         tool = YAMLValidatorTool()
-        result = asyncio.get_event_loop().run_until_complete(
-            tool.execute(content="key: [invalid yaml")
-        )
+        result = await tool.execute(content="key: [invalid yaml")
         assert "INVALID" in result
 
-    def test_missing_required_fields(self):
+    @pytest.mark.asyncio
+    async def test_missing_required_fields(self):
         tool = YAMLValidatorTool()
         content = """
 metadata:
   name: test
 """
-        result = asyncio.get_event_loop().run_until_complete(
-            tool.execute(content=content)
-        )
+        result = await tool.execute(content=content)
         assert "apiVersion" in result
         assert "kind" in result
