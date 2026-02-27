@@ -5,6 +5,7 @@ from pathlib import Path
 
 from kubemin_agent.agent.tools.browser import BrowserTool
 from kubemin_agent.agent.tools.content_audit import ContentAuditTool
+from kubemin_agent.agent.tools.filesystem import ReadFileTool, WriteFileTool
 from kubemin_agent.agent.tools.mcp_client import MCPClient
 from kubemin_agent.agent.tools.pdf_reader import PDFReaderTool
 from kubemin_agent.agent.tools.screenshot import ScreenshotTool
@@ -48,8 +49,13 @@ class GameAuditAgent(BaseAgent):
         return (
             "Audits web games by reading PDF gameplay guides "
             "and automating browser interactions via Chrome DevTools MCP "
-            "to verify game logic correctness, content compliance, and UI/UX quality."
+            "to verify game logic correctness, content compliance, and UI/UX quality. "
+            "Supports generating a UI mapping before testing."
         )
+
+    @property
+    def allowed_tools(self) -> list[str]:
+        return ["pdf_reader", "browser", "screenshot", "content_audit", "read_file", "write_file"]
 
     @property
     def system_prompt(self) -> str:
@@ -114,13 +120,17 @@ class GameAuditAgent(BaseAgent):
             "=== END SECURITY POLICY ===\n\n"
             f"{url_hint}"
             "Your workflow:\n"
+            "PHASE 1: UI Exploration & Mapping\n"
             "1. First, read the PDF gameplay guide using 'read_pdf' to understand the expected game behavior\n"
             "2. Navigate to the game URL using 'browser_action' with action='navigate'\n"
-            "3. Use 'browser_action' with action='snapshot' to get the page structure with element uids\n"
-            "4. Systematically test the game by clicking/filling elements using their uids\n"
-            "5. Take screenshots at key moments to document findings\n"
-            "6. Audit game content for compliance using 'audit_content'\n"
-            "7. Generate a detailed test report\n\n"
+            "3. Use 'browser_action' with action='snapshot' to analyze the accessibility tree and visual structure\n"
+            "4. Identify all key interactive elements (buttons, inputs, menus, etc.)\n"
+            "5. Create a UI mapping reference: Write this mapping to 'ui_mapping.md' in your workspace using the 'write_file' tool. Include Element Name, UID/Selector, and Purpose.\n\n"
+            "PHASE 2: Auditing\n"
+            "6. Systematically test the game by clicking/filling elements using their uids (consulting 'ui_mapping.md' via 'read_file' when unsure)\n"
+            "7. Take screenshots at key moments to document findings\n"
+            "8. Audit game content for compliance using 'audit_content'\n"
+            "9. Generate a detailed test report\n\n"
             "IMPORTANT: Element interaction uses uid-based targeting.\n"
             "- Always call 'snapshot' first to see available elements and their uids\n"
             "- Use the uid from the snapshot when calling click, fill, hover, etc.\n"
@@ -178,6 +188,8 @@ class GameAuditAgent(BaseAgent):
         self.tools.register(BrowserTool(self._mcp))
         self.tools.register(ScreenshotTool(self._mcp, self._workspace))
         self.tools.register(ContentAuditTool(self._mcp))
+        self.tools.register(ReadFileTool(self._workspace))
+        self.tools.register(WriteFileTool(self._workspace))
 
     async def cleanup(self) -> None:
         """Clean up resources (stop MCP server)."""
