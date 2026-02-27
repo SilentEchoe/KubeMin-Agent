@@ -31,6 +31,10 @@ class ControlPlaneRuntime:
         provider: LLMProvider,
         workspace: Path,
         model: str | None = None,
+        max_context_tokens: int = 6000,
+        min_recent_history_messages: int = 4,
+        task_anchor_max_chars: int = 600,
+        history_message_max_chars: int = 1200,
         evaluation_enabled: bool = True,
         evaluation_warn_threshold: int = 60,
         evaluation_llm_judge_enabled: bool = True,
@@ -42,6 +46,10 @@ class ControlPlaneRuntime:
         self.provider = provider
         self.workspace = workspace
         self.model = model
+        self.max_context_tokens = max_context_tokens
+        self.min_recent_history_messages = min_recent_history_messages
+        self.task_anchor_max_chars = task_anchor_max_chars
+        self.history_message_max_chars = history_message_max_chars
 
         self.sessions = SessionManager(workspace)
         self.audit = AuditLog(workspace.parent)
@@ -84,6 +92,10 @@ class ControlPlaneRuntime:
             provider=provider,
             workspace=workspace,
             model=config.agents.defaults.model,
+            max_context_tokens=config.agents.defaults.max_context_tokens,
+            min_recent_history_messages=config.agents.defaults.min_recent_history_messages,
+            task_anchor_max_chars=config.agents.defaults.task_anchor_max_chars,
+            history_message_max_chars=config.agents.defaults.history_message_max_chars,
             evaluation_enabled=config.evaluation.enabled,
             evaluation_warn_threshold=config.evaluation.warn_threshold,
             evaluation_llm_judge_enabled=config.evaluation.llm_judge_enabled,
@@ -95,14 +107,22 @@ class ControlPlaneRuntime:
 
     def _register_default_agents(self) -> None:
         """Register built-in sub-agents."""
+        agent_kwargs = {
+            "audit": self.audit,
+            "workspace": self.workspace,
+            "max_context_tokens": self.max_context_tokens,
+            "min_recent_history_messages": self.min_recent_history_messages,
+            "task_anchor_max_chars": self.task_anchor_max_chars,
+            "history_message_max_chars": self.history_message_max_chars,
+        }
         self.registry.register(
-            GeneralAgent(self.provider, self.sessions, audit=self.audit, workspace=self.workspace)
+            GeneralAgent(self.provider, self.sessions, **agent_kwargs)
         )
         self.registry.register(
-            K8sAgent(self.provider, self.sessions, audit=self.audit, workspace=self.workspace)
+            K8sAgent(self.provider, self.sessions, **agent_kwargs)
         )
         self.registry.register(
-            WorkflowAgent(self.provider, self.sessions, audit=self.audit, workspace=self.workspace)
+            WorkflowAgent(self.provider, self.sessions, **agent_kwargs)
         )
 
     async def handle_message(

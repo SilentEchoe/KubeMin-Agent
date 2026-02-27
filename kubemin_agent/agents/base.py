@@ -24,6 +24,10 @@ class BaseAgent(ABC):
     """
 
     MAX_ITERATIONS = 20
+    DEFAULT_MAX_CONTEXT_TOKENS = 6000
+    DEFAULT_MIN_RECENT_HISTORY_MESSAGES = 4
+    DEFAULT_TASK_ANCHOR_MAX_CHARS = 600
+    DEFAULT_HISTORY_MESSAGE_MAX_CHARS = 1200
 
     def __init__(
         self,
@@ -31,11 +35,19 @@ class BaseAgent(ABC):
         sessions: SessionManager,
         audit: Any | None = None,
         workspace: Path | None = None,
+        max_context_tokens: int = DEFAULT_MAX_CONTEXT_TOKENS,
+        min_recent_history_messages: int = DEFAULT_MIN_RECENT_HISTORY_MESSAGES,
+        task_anchor_max_chars: int = DEFAULT_TASK_ANCHOR_MAX_CHARS,
+        history_message_max_chars: int = DEFAULT_HISTORY_MESSAGE_MAX_CHARS,
     ) -> None:
         self.provider = provider
         self.sessions = sessions
         self._audit = audit
         self._workspace = workspace or Path.cwd()
+        self._max_context_tokens = max(512, max_context_tokens)
+        self._min_recent_history_messages = max(0, min_recent_history_messages)
+        self._task_anchor_max_chars = max(120, task_anchor_max_chars)
+        self._history_message_max_chars = max(120, history_message_max_chars)
         self._trace_task_id = ""
         self._trace_capture_enabled = True
         self._max_trace_steps = 50
@@ -102,15 +114,27 @@ class BaseAgent(ABC):
         history = self.sessions.get_history(session_key)
         self._trace_events = []
         self._trace_step_index = 0
+        task_anchor = self._build_task_anchor(message)
+        selected_history = self._select_history_for_budget(
+            history=history,
+            task_message=message,
+            task_anchor=task_anchor,
+        )
+
         messages: list[dict[str, Any]] = [{"role": "system", "content": self.system_prompt}]
-        messages.extend(history[-10:])
+        messages.append({"role": "system", "content": task_anchor})
+        messages.extend(selected_history)
         messages.append({"role": "user", "content": message})
         self._record_reasoning_step(
             session_key=session_key,
             phase="plan",
             intent_summary="开始执行任务",
             action="task_start",
-            observation_summary=message,
+            observation_summary=(
+                f"history_selected={len(selected_history)}, "
+                f"history_total={len(history)}, "
+                f"context_budget_tokens={self._max_context_tokens}"
+            ),
             request_id=request_id,
         )
 
@@ -118,7 +142,7 @@ class BaseAgent(ABC):
             tool_defs = self.tools.get_definitions() if len(self.tools) > 0 else None
 
             response = await self.provider.chat(
-                messages=messages,
+                messages=messages + [{"role": "system", "content": self._build_anchor_reminder(message)}],
                 tools=tool_defs,
             )
 
@@ -194,6 +218,82 @@ class BaseAgent(ABC):
                 )
 
         return "Reached maximum tool iterations. Please try a simpler request."
+
+    def _build_task_anchor(self, task_message: str) -> str:
+        """Build a stable task anchor to preserve long-running objective focus."""
+        objective = self._compact_text(task_message.strip(), self._task_anchor_max_chars)
+        return (
+            "[TASK ANCHOR]\n"
+            "Primary objective:\n"
+            f"{objective}\n\n"
+            "Execution guardrails:\n"
+            "- Keep every step aligned to this objective.\n"
+            "- Avoid unrelated exploration.\n"
+            "- If conflicts appear, prioritize this objective and safety constraints.\n"
+            "- Final response must directly answer this objective."
+        )
+
+    def _build_anchor_reminder(self, task_message: str) -> str:
+        """Build a compact objective reminder for each reasoning iteration."""
+        objective = self._compact_text(task_message.strip(), 220)
+        return (
+            "[TASK REMINDER]\n"
+            f"{objective}\n"
+            "Continue only with actions that advance this objective."
+        )
+
+    def _select_history_for_budget(
+        self,
+        *,
+        history: list[dict[str, Any]],
+        task_message: str,
+        task_anchor: str,
+    ) -> list[dict[str, Any]]:
+        """Select recent history with token budgeting instead of fixed window size."""
+        base_tokens = (
+            self._estimate_tokens(self.system_prompt)
+            + self._estimate_tokens(task_anchor)
+            + self._estimate_tokens(task_message)
+            + 256
+        )
+        history_budget = max(0, self._max_context_tokens - base_tokens)
+        if history_budget <= 0 or not history:
+            return []
+
+        selected_rev: list[dict[str, Any]] = []
+        used_tokens = 0
+
+        for raw in reversed(history):
+            role = str(raw.get("role", "user"))
+            content = str(raw.get("content", ""))
+            if not content.strip():
+                continue
+
+            compact = self._compact_text(content, self._history_message_max_chars)
+            token_cost = self._estimate_tokens(compact) + 8
+
+            if used_tokens + token_cost > history_budget:
+                if len(selected_rev) < self._min_recent_history_messages:
+                    remaining_chars = max(120, (history_budget - used_tokens) * 4)
+                    clipped = self._compact_text(content, min(remaining_chars, self._history_message_max_chars))
+                    selected_rev.append({"role": role, "content": clipped})
+                    used_tokens += self._estimate_tokens(clipped) + 8
+                    continue
+                break
+
+            selected_rev.append({"role": role, "content": compact})
+            used_tokens += token_cost
+
+        if not selected_rev:
+            last = history[-1]
+            return [
+                {
+                    "role": str(last.get("role", "user")),
+                    "content": self._compact_text(str(last.get("content", "")), 240),
+                }
+            ]
+
+        return list(reversed(selected_rev))
 
     def set_trace_context(self, task_id: str = "") -> None:
         """Set per-run trace context from scheduler."""
@@ -300,3 +400,16 @@ class BaseAgent(ABC):
             except TypeError:
                 text = str(value)
         return text[:limit]
+
+    @staticmethod
+    def _estimate_tokens(text: str) -> int:
+        """Approximate token usage without provider-specific tokenizer dependency."""
+        if not text:
+            return 0
+        return max(1, len(text) // 4)
+
+    def _compact_text(self, text: str, max_chars: int) -> str:
+        """Trim long text while preserving visible truncation hints."""
+        if len(text) <= max_chars:
+            return text
+        return f"{text[:max_chars]} ...[truncated {len(text) - max_chars} chars]"

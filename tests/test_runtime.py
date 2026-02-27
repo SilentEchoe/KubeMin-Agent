@@ -45,3 +45,21 @@ def test_runtime_from_config_can_disable_evaluation(tmp_path: Path) -> None:
 
     runtime = ControlPlaneRuntime.from_config(config, RoutingProvider(), workspace)
     assert runtime.scheduler.evaluator is None
+
+
+def test_runtime_from_config_applies_context_budget_to_agents(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir(parents=True, exist_ok=True)
+    config = Config()
+    config.agents.defaults.max_context_tokens = 3400
+    config.agents.defaults.min_recent_history_messages = 6
+    config.agents.defaults.task_anchor_max_chars = 480
+    config.agents.defaults.history_message_max_chars = 900
+
+    runtime = ControlPlaneRuntime.from_config(config, RoutingProvider(), workspace)
+    general = runtime.registry.get("general")
+    assert general is not None
+    assert general._max_context_tokens == 3400
+    assert general._min_recent_history_messages == 6
+    assert general._task_anchor_max_chars == 480
+    assert general._history_message_max_chars == 900

@@ -125,6 +125,10 @@ def status(
     table.add_row("Workspace", str(config.workspace_path))
     table.add_row("Model", config.agents.defaults.model)
     table.add_row("Max Tokens", str(config.agents.defaults.max_tokens))
+    table.add_row("Max Context Tokens", str(config.agents.defaults.max_context_tokens))
+    table.add_row("Min Recent History", str(config.agents.defaults.min_recent_history_messages))
+    table.add_row("Task Anchor Max Chars", str(config.agents.defaults.task_anchor_max_chars))
+    table.add_row("History Msg Max Chars", str(config.agents.defaults.history_message_max_chars))
     table.add_row("Temperature", str(config.agents.defaults.temperature))
     table.add_row("Max Tool Iterations", str(config.agents.defaults.max_tool_iterations))
 

@@ -12,6 +12,10 @@ class AgentDefaults(BaseModel):
     workspace: str = "~/.kubemin-agent/workspace"
     model: str = "anthropic/claude-sonnet-4-20250514"
     max_tokens: int = 8192
+    max_context_tokens: int = 6000
+    min_recent_history_messages: int = 4
+    task_anchor_max_chars: int = 600
+    history_message_max_chars: int = 1200
     temperature: float = 0.7
     max_tool_iterations: int = 20
 
