@@ -92,6 +92,21 @@ class ControlPlaneRuntime:
         """Handle one inbound message through control plane dispatch."""
         session_key = f"{channel}:{chat_id}"
         dispatch_id = request_id or uuid.uuid4().hex[:12]
+        
+        stripped = content.strip()
+        if stripped.startswith("/plan "):
+            return await self.scheduler.dispatch(
+                message=stripped[6:].strip(),
+                session_key=session_key,
+                request_id=dispatch_id,
+                plan_mode=True,
+            )
+        elif stripped == "/execute":
+            return await self.scheduler.execute_saved_plan(
+                session_key=session_key,
+                request_id=dispatch_id,
+            )
+            
         return await self.scheduler.dispatch(
             message=content,
             session_key=session_key,

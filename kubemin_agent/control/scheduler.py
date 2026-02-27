@@ -15,6 +15,7 @@ from kubemin_agent.control.registry import AgentRegistry
 from kubemin_agent.control.validator import Validator
 from kubemin_agent.providers.base import LLMProvider
 from kubemin_agent.session.manager import SessionManager
+import dataclasses
 
 
 @dataclass
@@ -111,6 +112,7 @@ class Scheduler:
         message: str,
         session_key: str,
         request_id: str | None = None,
+        plan_mode: bool = False,
     ) -> str:
         """
         Full dispatch flow: intent analysis -> select agent -> execute -> validate -> return.
@@ -119,20 +121,72 @@ class Scheduler:
             message: The user's message.
             session_key: Session identifier.
             request_id: Optional correlation ID for tracing.
+            plan_mode: If True, generate and save the plan without executing it.
 
         Returns:
-            The final response to send back to the user.
+            The final response to send back to the user or the formatted plan.
         """
         dispatch_id = request_id or uuid.uuid4().hex[:12]
 
         # 1. Analyze intent
         plan = await self.analyze_intent(message)
 
+        if plan_mode:
+            plan_data = {
+                "tasks": [dataclasses.asdict(t) for t in plan.tasks],
+                "execution_mode": plan.execution_mode,
+                "original_message": message,
+            }
+            self.sessions.save_plan(session_key, plan_data)
+            
+            output = "[📝 Pending Plan]\n"
+            output += f"Execution Mode: {plan.execution_mode}\n\n"
+            for t in plan.tasks:
+                output += f"- **Task**: {t.description}\n"
+                output += f"  - Agent: {t.agent_name}\n"
+                if t.depends_on:
+                    output += f"  - Dependencies: {', '.join(t.depends_on)}\n"
+            output += "\nRun `/execute` to start the plan."
+            return output
+
         # 2. Execute plan
         result = await self.execute_plan(plan, message, session_key, request_id=dispatch_id)
 
         # 3. Save to session
         self.sessions.save_turn(session_key, message, result)
+
+        return result
+
+    async def execute_saved_plan(
+        self,
+        session_key: str,
+        request_id: str | None = None,
+    ) -> str:
+        """
+        Execute a previously saved plan.
+
+        Args:
+            session_key: Session identifier.
+            request_id: Optional correlation ID for tracing.
+
+        Returns:
+            The execution result.
+        """
+        plan_data = self.sessions.get_plan(session_key)
+        if not plan_data:
+            return "Error: No pending plan found. Use `/plan <task>` to create one first."
+
+        tasks = [
+            SubTask(**t) for t in plan_data.get("tasks", [])
+        ]
+        plan = DispatchPlan(tasks=tasks, execution_mode=plan_data.get("execution_mode", "sequential"))
+        original_message = plan_data.get("original_message", "execute saved plan")
+        dispatch_id = request_id or uuid.uuid4().hex[:12]
+
+        result = await self.execute_plan(plan, original_message, session_key, request_id=dispatch_id)
+
+        self.sessions.save_turn(session_key, f"/execute (Original task: {original_message})", result)
+        self.sessions.clear_plan(session_key)
 
         return result
 

@@ -114,3 +114,48 @@ async def test_scheduler_parallel_executes_concurrently(tmp_path: Path) -> None:
     elapsed = time.monotonic() - start
 
     assert elapsed < 0.35
+
+@pytest.mark.asyncio
+async def test_scheduler_plan_mode_saves_plan(tmp_path: Path) -> None:
+    scheduler, registry = _build_scheduler(tmp_path)
+    registry.register(StubAgent("general"))
+
+    # Act: Dispatch with plan_mode=True
+    response = await scheduler.dispatch(
+        message="do something",
+        session_key="cli:test_plan",
+        plan_mode=True,
+    )
+
+    assert "[📝 Pending Plan]" in response
+    assert "Run `/execute` to start the plan." in response
+
+    # Assert: Plan is saved in session
+    plan_data = scheduler.sessions.get_plan("cli:test_plan")
+    assert plan_data is not None
+    assert plan_data["original_message"] == "do something"
+    assert len(plan_data["tasks"]) == 1
+    assert plan_data["tasks"][0]["agent_name"] == "general"
+
+@pytest.mark.asyncio
+async def test_scheduler_execute_saved_plan(tmp_path: Path) -> None:
+    scheduler, registry = _build_scheduler(tmp_path)
+    registry.register(StubAgent("general"))
+
+    # Act 1: Create a plan
+    await scheduler.dispatch(
+        message="do something",
+        session_key="cli:test_plan_execute",
+        plan_mode=True,
+    )
+    
+    assert scheduler.sessions.get_plan("cli:test_plan_execute") is not None
+
+    # Act 2: Execute the saved plan
+    response = await scheduler.execute_saved_plan(
+        session_key="cli:test_plan_execute",
+    )
+
+    # Assert: Execution happened and plan is cleared
+    assert "general:noop" in response
+    assert scheduler.sessions.get_plan("cli:test_plan_execute") is None

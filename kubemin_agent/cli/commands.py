@@ -66,7 +66,8 @@ def agent(
             console.print(response)
             return
 
-        console.print("[bold]KubeMin-Agent[/bold] control-plane interactive mode. Type 'exit' to quit.\n")
+        console.print("[bold]KubeMin-Agent[/bold] control-plane interactive mode.")
+        console.print("Type 'exit' to quit. Use '/plan <task>' to create a plan, and '/execute' to run it.\n")
         while True:
             try:
                 user_input = console.input("[bold blue]> [/bold blue]")

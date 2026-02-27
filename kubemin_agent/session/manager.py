@@ -87,3 +87,32 @@ class SessionManager:
         if path.exists():
             path.unlink()
         logger.debug(f"Session cleared: {session_key}")
+
+    def _plan_path(self, session_key: str) -> Path:
+        """Get the file path for a session's pending plan."""
+        safe_key = session_key.replace(":", "_").replace("/", "_")
+        return self.sessions_dir / f"{safe_key}.plan.json"
+
+    def save_plan(self, session_key: str, plan_data: dict[str, Any]) -> None:
+        """Save a pending execution plan."""
+        path = self._plan_path(session_key)
+        path.write_text(json.dumps(plan_data, ensure_ascii=False, indent=2), encoding="utf-8")
+        logger.debug(f"Plan saved: {session_key}")
+
+    def get_plan(self, session_key: str) -> dict[str, Any] | None:
+        """Retrieve a pending execution plan if it exists."""
+        path = self._plan_path(session_key)
+        if not path.exists():
+            return None
+        try:
+            return json.loads(path.read_text(encoding="utf-8"))
+        except Exception as e:
+            logger.warning(f"Failed to load plan {session_key}: {e}")
+            return None
+
+    def clear_plan(self, session_key: str) -> None:
+        """Clear a session's pending plan."""
+        path = self._plan_path(session_key)
+        if path.exists():
+            path.unlink()
+            logger.debug(f"Plan cleared: {session_key}")
