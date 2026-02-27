@@ -50,7 +50,8 @@ class FileBackend(MemoryBackend):
             content_lower = entry.content.lower()
             # Score: number of query terms found in content
             score = sum(1 for term in query_terms if term in content_lower)
-            if score > 0:
+            # Require ALL terms to match for a simple "AND" search behavior
+            if score == len(query_terms) and score > 0:
                 scored.append((score, entry))
 
         # Sort by score descending, then by recency
