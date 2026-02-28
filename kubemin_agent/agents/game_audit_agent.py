@@ -38,7 +38,7 @@ class GameAuditAgent(BaseAgent):
         self._workspace.mkdir(parents=True, exist_ok=True)
         self._mcp = MCPClient(headless=headless)
         self._game_url = game_url or os.environ.get("GAME_TEST_URL")
-        super().__init__(provider, sessions, audit=audit)
+        super().__init__(provider, sessions, audit=audit, workspace=self._workspace)
 
     @property
     def name(self) -> str:
@@ -55,7 +55,7 @@ class GameAuditAgent(BaseAgent):
 
     @property
     def allowed_tools(self) -> list[str]:
-        return ["pdf_reader", "browser", "screenshot", "content_audit", "read_file", "write_file"]
+        return ["read_pdf", "browser_action", "take_screenshot", "audit_content", "read_file", "write_file"]
 
     @property
     def system_prompt(self) -> str:
