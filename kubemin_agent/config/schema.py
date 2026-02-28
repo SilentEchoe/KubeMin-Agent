@@ -55,10 +55,21 @@ class TelegramConfig(BaseModel):
     allow_from: list[str] = Field(default_factory=list)
 
 
+class FeishuConfig(BaseModel):
+    """Feishu (Lark) channel configuration."""
+
+    enabled: bool = False
+    app_id: str = ""
+    app_secret: str = ""
+    verification_token: str = ""
+    allow_from: list[str] = Field(default_factory=list)
+
+
 class ChannelsConfig(BaseModel):
     """Configuration for chat channels."""
 
     telegram: TelegramConfig = Field(default_factory=TelegramConfig)
+    feishu: FeishuConfig = Field(default_factory=FeishuConfig)
 
 
 class GatewayConfig(BaseModel):
