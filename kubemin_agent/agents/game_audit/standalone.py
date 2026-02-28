@@ -149,6 +149,9 @@ def serve(
 
         try:
             result = await agent.run(task_message, session_key=f"service:game_audit:{game_url}")
+            if result.startswith("[SUSPENDED]"):
+                return JSONResponse({"status": "suspended", "message": result}, status_code=202)
+                
             if getattr(agent, "_final_report", None):
                 return JSONResponse(agent._final_report.model_dump(mode="json"))
             return JSONResponse({"status": "ok", "report": result})

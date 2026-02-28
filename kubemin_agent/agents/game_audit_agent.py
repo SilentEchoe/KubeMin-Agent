@@ -2,6 +2,7 @@
 
 import os
 from pathlib import Path
+from typing import Any
 
 from kubemin_agent.agent.tools.browser import BrowserTool
 from kubemin_agent.agent.tools.content_audit import ContentAuditTool
@@ -13,8 +14,9 @@ from kubemin_agent.agents.base import BaseAgent
 from kubemin_agent.providers.base import LLMProvider
 from kubemin_agent.session.manager import SessionManager
 from kubemin_agent.agents.game_audit.models import TestPlan, AuditReportV1
-from kubemin_agent.agents.game_audit.tools import GeneratePlanTool, UpdateCaseStatusTool, SubmitReportTool
+from kubemin_agent.agents.game_audit.tools import GeneratePlanTool, UpdateCaseStatusTool, SubmitReportTool, RequestHumanReviewTool
 from kubemin_agent.agents.game_audit.assert_tool import AssertTool
+from kubemin_agent.agents.game_audit.exceptions import SuspendExecutionException
 
 
 class GameAuditAgent(BaseAgent):
@@ -63,7 +65,7 @@ class GameAuditAgent(BaseAgent):
         return [
             "read_pdf", "browser_action", "take_screenshot", "audit_content",
             "read_file", "write_file", "generate_plan", "update_case_status",
-            "submit_report", "run_assertion"
+            "submit_report", "run_assertion", "request_human_review"
         ]
 
     @property
@@ -177,6 +179,13 @@ class GameAuditAgent(BaseAgent):
             "  d) If the positioning is wrong or analysis is uncertain: go back to step (a) and re-locate\n"
             "  e) Only EXECUTE the intended action (click, audit, etc.) after confident positioning\n"
             "  f) After execution, take another screenshot to verify the result\n\n"
+            "STRATEGY 4 -- Human Escalation (Human-in-the-Loop):\n"
+            "If you encounter a situation you cannot handle automatically, such as:\n"
+            "  - A complex CAPTCHA preventing login\n"
+            "  - Highly ambiguous content that you are unsure if it violates compliance policies\n"
+            "  - An unexpected complete game crash or unrecoverable error page\n"
+            "You MUST call the 'request_human_review' tool. Provide a clear reason and an optional screenshot path. "
+            "Calling this tool will safely suspend your audit until a human handles the problem.\n\n"
             "=== END AUDIT STRATEGIES ===\n\n"
             "You MUST use the 'submit_report' tool as your very last action to produce the structured JSON report."
         )
@@ -193,6 +202,20 @@ class GameAuditAgent(BaseAgent):
         self.tools.register(UpdateCaseStatusTool(self))
         self.tools.register(SubmitReportTool(self))
         self.tools.register(AssertTool())
+        self.tools.register(RequestHumanReviewTool(self))
+
+    async def run(
+        self,
+        message: str,
+        session_key: str,
+        request_id: str = "",
+        context_envelope: Any | None = None,
+    ) -> str:
+        """Override base run to catch SuspendExecutionException."""
+        try:
+            return await super().run(message, session_key, request_id, context_envelope)
+        except SuspendExecutionException as e:
+            return f"[SUSPENDED] {str(e)} (Case ID: {e.case_id}, Screenshot: {e.screenshot_path})"
 
     async def cleanup(self) -> None:
         """Clean up resources (stop MCP server)."""

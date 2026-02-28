@@ -5,6 +5,7 @@ from typing import Any
 
 from kubemin_agent.agent.tools.base import Tool
 from .models import TestPlan, TestCase, TestCaseStatus, AuditReportV1
+from .exceptions import SuspendExecutionException
 
 
 class GeneratePlanTool(Tool):
@@ -170,3 +171,51 @@ class SubmitReportTool(Tool):
         report_path.write_text(report.model_dump_json(indent=2))
         
         return "Report successfully submitted. The audit run is complete."
+
+
+class RequestHumanReviewTool(Tool):
+    """Tool to request human intervention and suspend the agent run."""
+
+    def __init__(self, agent: Any) -> None:
+        self.agent = agent
+
+    @property
+    def name(self) -> str:
+        return "request_human_review"
+
+    @property
+    def description(self) -> str:
+        return (
+            "Use this tool when you encounter an ambiguous situation, low-confidence finding, "
+            "or a CAPTCHA that you cannot bypass. This will suspend your execution and ask "
+            "a human operator for help or clarification."
+        )
+
+    @property
+    def parameters(self) -> dict[str, Any]:
+        return {
+            "type": "object",
+            "properties": {
+                "reason": {"type": "string", "description": "Why human help is needed (e.g. 'Is this image compliant with the policy?')."},
+                "case_id": {"type": "string", "description": "The ID of the test case currently being executed."},
+                "screenshot_path": {"type": "string", "description": "Optional path to a screenshot showing the issue."}
+            },
+            "required": ["reason", "case_id"]
+        }
+
+    async def execute(self, **kwargs: Any) -> str:
+        case_id = kwargs["case_id"]
+        
+        # Optionally, mark the case as PENDING_REVIEW if we have a test plan
+        if hasattr(self.agent, "_test_plan") and self.agent._test_plan:
+            for case in self.agent._test_plan.test_cases:
+                if case.id == case_id:
+                    case.status = TestCaseStatus.PENDING_REVIEW
+                    break
+
+        raise SuspendExecutionException(
+            reason=kwargs["reason"],
+            case_id=case_id,
+            screenshot_path=kwargs.get("screenshot_path", "")
+        )
+
