@@ -88,7 +88,10 @@ def test(
     async def _run():
         try:
             result = await agent.run(task_message, session_key="standalone:game_audit")
-            console.print(result)
+            if getattr(agent, "_final_report", None):
+                console.print(agent._final_report.model_dump_json(indent=2))
+            else:
+                console.print(result)
         finally:
             await agent.cleanup()
 
@@ -146,6 +149,8 @@ def serve(
 
         try:
             result = await agent.run(task_message, session_key=f"service:game_audit:{game_url}")
+            if getattr(agent, "_final_report", None):
+                return JSONResponse(agent._final_report.model_dump(mode="json"))
             return JSONResponse({"status": "ok", "report": result})
         except Exception as e:
             return JSONResponse({"status": "error", "error": str(e)}, status_code=500)
