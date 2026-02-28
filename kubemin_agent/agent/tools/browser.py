@@ -50,6 +50,7 @@ class BrowserTool(Tool):
                         "navigate", "click", "fill", "hover", "drag",
                         "scroll", "wait", "evaluate", "snapshot",
                         "press_key", "console_logs", "network",
+                        "mock_network", "throttle_network", "disconnect_network",
                     ],
                     "description": (
                         "Action to perform: "
@@ -64,7 +65,10 @@ class BrowserTool(Tool):
                         "snapshot (get page content with element uids), "
                         "press_key (press key combo), "
                         "console_logs (get browser console messages), "
-                        "network (list network requests)"
+                        "network (list network requests), "
+                        "mock_network (mock JSON response, value is JSON map of path -> response), "
+                        "throttle_network (delay fetch, value is ms to delay), "
+                        "disconnect_network (force fetch to fail)"
                     ),
                 },
                 "url": {
@@ -180,6 +184,62 @@ class BrowserTool(Tool):
                     result,
                     title="browser_network_requests",
                 )
+
+            elif action == "mock_network":
+                value = kwargs.get("value", "{}")
+                js = f"""
+                (function() {{
+                    window.__mockData = {value};
+                    if (!window.__originalFetch) window.__originalFetch = window.fetch;
+                    window.fetch = async function(...args) {{
+                        let url = typeof args[0] === 'string' ? args[0] : (args[0] && args[0].url) || "";
+                        for (let key in window.__mockData) {{
+                            if (url.includes(key)) {{
+                                console.log("[mock_network] Intercepted:", url);
+                                return new Response(JSON.stringify(window.__mockData[key]), {{
+                                    status: 200,
+                                    headers: {{ 'Content-Type': 'application/json' }}
+                                }});
+                            }}
+                        }}
+                        return window.__originalFetch.apply(this, args);
+                    }};
+                    return "Network mocking applied for endpoints: " + Object.keys(window.__mockData).join(", ");
+                }})();
+                """
+                result = await self._mcp.call_tool("evaluate_script", {"function": js})
+                return self._summarizer.summarize(result, title="mock_network")
+
+            elif action == "throttle_network":
+                delay_ms = kwargs.get("value", "2000")
+                js = f"""
+                (function() {{
+                    window.__throttleMs = parseInt({delay_ms}) || 2000;
+                    if (!window.__originalFetch) window.__originalFetch = window.fetch;
+                    window.fetch = async function(...args) {{
+                        console.log("[throttle_network] Delaying:", args[0], "by", window.__throttleMs, "ms");
+                        await new Promise(r => setTimeout(r, window.__throttleMs));
+                        return window.__originalFetch.apply(this, args);
+                    }};
+                    return "Network throttled by " + window.__throttleMs + "ms";
+                }})();
+                """
+                result = await self._mcp.call_tool("evaluate_script", {"function": js})
+                return self._summarizer.summarize(result, title="throttle_network")
+
+            elif action == "disconnect_network":
+                js = """
+                (function() {
+                    if (!window.__originalFetch) window.__originalFetch = window.fetch;
+                    window.fetch = async function(...args) {
+                        console.log("[disconnect_network] Blocked:", args[0]);
+                        throw new TypeError("Failed to fetch");
+                    };
+                    return "Network disconnected (fetch operations will fail)";
+                })();
+                """
+                result = await self._mcp.call_tool("evaluate_script", {"function": js})
+                return self._summarizer.summarize(result, title="disconnect_network")
 
             else:
                 return f"Error: Unknown action '{action}'"

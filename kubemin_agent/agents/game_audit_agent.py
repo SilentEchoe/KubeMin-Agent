@@ -186,6 +186,12 @@ class GameAuditAgent(BaseAgent):
             "  - An unexpected complete game crash or unrecoverable error page\n"
             "You MUST call the 'request_human_review' tool. Provide a clear reason and an optional screenshot path. "
             "Calling this tool will safely suspend your audit until a human handles the problem.\n\n"
+            "STRATEGY 5 -- Chaos Engineering Testing:\n"
+            "When testing the game's resilience to bad network conditions:\n"
+            "  a) Use 'browser_action' with action='throttle_network' (value='<ms>') to simulate high latency.\n"
+            "  b) Use 'browser_action' with action='disconnect_network' to test offline behavior and error handling.\n"
+            "  c) Use 'browser_action' with action='mock_network' (value='<json>') to inject mocked JSON responses.\n"
+            "  d) After injecting chaos, perform a game action and verify if the game handles it gracefully (e.g., shows a warning instead of crashing).\n\n"
             "=== END AUDIT STRATEGIES ===\n\n"
             "You MUST use the 'submit_report' tool as your very last action to produce the structured JSON report."
         )
