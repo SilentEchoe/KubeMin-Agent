@@ -14,6 +14,7 @@ from kubemin_agent.providers.base import LLMProvider
 from kubemin_agent.session.manager import SessionManager
 from kubemin_agent.agents.game_audit.models import TestPlan, AuditReportV1
 from kubemin_agent.agents.game_audit.tools import GeneratePlanTool, UpdateCaseStatusTool, SubmitReportTool
+from kubemin_agent.agents.game_audit.assert_tool import AssertTool
 
 
 class GameAuditAgent(BaseAgent):
@@ -61,7 +62,8 @@ class GameAuditAgent(BaseAgent):
     def allowed_tools(self) -> list[str]:
         return [
             "read_pdf", "browser_action", "take_screenshot", "audit_content",
-            "read_file", "write_file", "generate_plan", "update_case_status", "submit_report"
+            "read_file", "write_file", "generate_plan", "update_case_status",
+            "submit_report", "run_assertion"
         ]
 
     @property
@@ -159,16 +161,14 @@ class GameAuditAgent(BaseAgent):
             "  c) If an error is found: immediately take a screenshot, record the error message, "
             "the action that triggered it, and the timestamp into your report under 'Console/Network Issues'\n"
             "  d) Also check 'browser_action' with action='network' periodically for failed HTTP requests (4xx/5xx)\n\n"
-            "STRATEGY 2 -- Coin/Gold Verification (REPEAT until confirmed):\n"
-            "When ANY action involves coin/gold/currency changes:\n"
-            "  a) BEFORE the action: read the current coin count via snapshot or evaluate JS to extract the exact number\n"
-            "  b) Record the expected change (e.g. -10 coins for a purchase)\n"
-            "  c) EXECUTE the action\n"
-            "  d) AFTER the action: read the coin count again\n"
-            "  e) VERIFY: does (new_count - old_count) match the expected change?\n"
-            "  f) If uncertain or mismatched: REPEAT steps (d)-(e) at least once more to confirm\n"
-            "  g) If still mismatched after re-check: take a screenshot and record as a bug in 'Issues Found'\n"
-            "  h) Always document: old_count, expected_change, new_count, pass/fail\n\n"
+            "STRATEGY 2 -- Deterministic Numerical/State Verification (Coin/Gold/HP):\n"
+            "DO NOT RELY on your vision or screenshot reading to calculate differences in values.\n"
+            "When ANY action involves numerical changes (coins, health, scores):\n"
+            "  a) BEFORE the action: extract the exact numeric value by calling 'browser_action' with action='evaluate'. Write a JS snippet that queries the specific DOM element text or window state.\n"
+            "  b) EXECUTE the action (click, fill, wait).\n"
+            "  c) AFTER the action: extract the numeric state again via 'browser_action' with action='evaluate'.\n"
+            "  d) Call the 'run_assertion' tool with the respective expected and actual values (e.g. action='assert_delta').\n"
+            "  e) Base your test case PASS/FAIL conclusion strictly on the algorithmic output of 'run_assertion'.\n\n"
             "STRATEGY 3 -- Image Analysis (Position -> Verify -> Execute):\n"
             "When you need to analyze or interact with visual/image content:\n"
             "  a) POSITION: call 'snapshot' to locate the target element and its uid\n"
@@ -192,6 +192,7 @@ class GameAuditAgent(BaseAgent):
         self.tools.register(GeneratePlanTool(self))
         self.tools.register(UpdateCaseStatusTool(self))
         self.tools.register(SubmitReportTool(self))
+        self.tools.register(AssertTool())
 
     async def cleanup(self) -> None:
         """Clean up resources (stop MCP server)."""
