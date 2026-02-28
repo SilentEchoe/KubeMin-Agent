@@ -14,7 +14,7 @@ from kubemin_agent.agents.base import BaseAgent
 from kubemin_agent.providers.base import LLMProvider
 from kubemin_agent.session.manager import SessionManager
 from kubemin_agent.agents.game_audit.models import TestPlan, AuditReportV1
-from kubemin_agent.agents.game_audit.tools import GeneratePlanTool, UpdateCaseStatusTool, SubmitReportTool, RequestHumanReviewTool
+from kubemin_agent.agents.game_audit.tools import GeneratePlanTool, UpdateCaseStatusTool, SubmitReportTool, RequestHumanReviewTool, GetPastReportsTool
 from kubemin_agent.agents.game_audit.assert_tool import AssertTool
 from kubemin_agent.agents.game_audit.exceptions import SuspendExecutionException
 
@@ -65,7 +65,8 @@ class GameAuditAgent(BaseAgent):
         return [
             "read_pdf", "browser_action", "take_screenshot", "audit_content",
             "read_file", "write_file", "generate_plan", "update_case_status",
-            "submit_report", "run_assertion", "request_human_review"
+            "submit_report", "run_assertion", "request_human_review",
+            "get_past_reports"
         ]
 
     @property
@@ -192,6 +193,12 @@ class GameAuditAgent(BaseAgent):
             "  b) Use 'browser_action' with action='disconnect_network' to test offline behavior and error handling.\n"
             "  c) Use 'browser_action' with action='mock_network' (value='<json>') to inject mocked JSON responses.\n"
             "  d) After injecting chaos, perform a game action and verify if the game handles it gracefully (e.g., shows a warning instead of crashing).\n\n"
+            "STRATEGY 6 -- Cross-Run Historical Comparison:\n"
+            "Before generating your TestPlan for a game, ALWAYS call the 'get_past_reports' tool to check if the game has been audited before.\n"
+            "If past reports are found:\n"
+            "  a) Review them to see which test cases FAILED.\n"
+            "  b) Ensure your new TestPlan specifically includes tests to verify if those regressions have been fixed.\n"
+            "  c) In your final 'markdown_report', explicitly mention if past bugs were \"Fixed Regression\" or are a \"Persistent Bug\".\n\n"
             "=== END AUDIT STRATEGIES ===\n\n"
             "You MUST use the 'submit_report' tool as your very last action to produce the structured JSON report."
         )
@@ -209,6 +216,7 @@ class GameAuditAgent(BaseAgent):
         self.tools.register(SubmitReportTool(self))
         self.tools.register(AssertTool())
         self.tools.register(RequestHumanReviewTool(self))
+        self.tools.register(GetPastReportsTool(self))
 
     async def run(
         self,

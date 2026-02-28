@@ -168,9 +168,16 @@ class SubmitReportTool(Tool):
         
         # We can also save it to workspace for persistence
         report_path = self.agent._workspace / "audit_report_v1.json"
-        report_path.write_text(report.model_dump_json(indent=2))
         
-        return "Report successfully submitted. The audit run is complete."
+        # Save to MemoryStore for cross-run history
+        if hasattr(self.agent, "_memory") and self.agent._memory:
+            await self.agent._memory.remember(
+                content=report.model_dump_json(indent=2),
+                tags=["game_audit", self.agent._test_plan.game_url]
+            )
+
+        report_path.write_text(report.model_dump_json(indent=2))
+        return "Report successfully submitted and saved to memory. The audit run is complete."
 
 
 class RequestHumanReviewTool(Tool):
@@ -218,4 +225,60 @@ class RequestHumanReviewTool(Tool):
             case_id=case_id,
             screenshot_path=kwargs.get("screenshot_path", "")
         )
+
+class GetPastReportsTool(Tool):
+    """Tool to retrieve historical audit reports for a specific game."""
+
+    def __init__(self, agent: Any) -> None:
+        self.agent = agent
+
+    @property
+    def name(self) -> str:
+        return "get_past_reports"
+
+    @property
+    def description(self) -> str:
+        return (
+            "Use this tool before creating a TestPlan to check if this game has been audited before. "
+            "It returns previous AuditReportV1 JSONs from the memory store. You can use this "
+            "to check if past bugs (FAILED test cases) have been fixed."
+        )
+
+    @property
+    def parameters(self) -> dict[str, Any]:
+        return {
+            "type": "object",
+            "properties": {
+                "game_url": {"type": "string", "description": "The URL of the game."},
+                "limit": {"type": "integer", "description": "Maximum number of past reports to return. Default is 5."}
+            },
+            "required": ["game_url"]
+        }
+
+    async def execute(self, **kwargs: Any) -> str:
+        if not hasattr(self.agent, "_memory") or not self.agent._memory:
+            return "Error: Memory store is not available."
+
+        game_url = kwargs["game_url"]
+        limit = kwargs.get("limit", 5)
+        
+        # Search for exact game_url in tags or query
+        query = f"game_audit {game_url}"
+        memories = await self.agent._memory.recall(query=query, top_k=limit)
+        
+        if not memories:
+            return f"No past reports found for {game_url}."
+            
+        reports = []
+        for i, m in enumerate(memories):
+            try:
+                # We expect the content to be the JSON string of AuditReportV1
+                reports.append(f"--- Past Report {i+1} ({m.created_at}) ---\n{m.content}")
+            except Exception:
+                pass
+                
+        if not reports:
+            return f"No valid past reports found for {game_url}."
+            
+        return "\n\n".join(reports)
 
