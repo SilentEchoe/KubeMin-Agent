@@ -48,6 +48,22 @@
 - 审计新增 `evaluation` 事件，记录总分、维度分、原因与改进建议
 - 默认策略为“仅观测告警，不阻断主流程响应”
 
+### 0.5 增量更新（2026-02-28）
+
+优先执行上下文工程阶段 C（M3-M5），完成以下核心能力：
+
+- 工具结果语义摘要层：
+  - 新增 `agent/tools/summarizer.py`
+  - `BrowserTool` 与 `ContentAuditTool` 的大输出路径接入语义摘要，降低纯截断带来的关键信息丢失
+- 跨 Agent 上下文传递：
+  - 新增 `control/agent_context.py`（`ContextEnvelope` + `AgentContextStore`）
+  - `Scheduler` 在多任务依赖链路中将前序任务发现传递给后续任务
+  - `BaseAgent.run()` 支持注入 `context_envelope`，减少重复探索
+- 查询驱动记忆注入：
+  - `BaseAgent` 改为按当前任务 query 召回 memory 并注入 prompt
+  - 新增配置联动：`memory_backend` / `memory_top_k` / `memory_context_max_chars`
+  - `ControlPlaneRuntime.from_config()` 已将记忆策略下发到默认子 Agent
+
 ---
 
 ## 1. 项目定位与目标

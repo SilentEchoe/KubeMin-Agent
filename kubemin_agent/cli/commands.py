@@ -133,6 +133,9 @@ def status(
     table.add_row("Min Recent History", str(config.agents.defaults.min_recent_history_messages))
     table.add_row("Task Anchor Max Chars", str(config.agents.defaults.task_anchor_max_chars))
     table.add_row("History Msg Max Chars", str(config.agents.defaults.history_message_max_chars))
+    table.add_row("Memory Backend", config.agents.defaults.memory_backend)
+    table.add_row("Memory Top K", str(config.agents.defaults.memory_top_k))
+    table.add_row("Memory Context Max Chars", str(config.agents.defaults.memory_context_max_chars))
     table.add_row("Temperature", str(config.agents.defaults.temperature))
     table.add_row("Max Tool Iterations", str(config.agents.defaults.max_tool_iterations))
 

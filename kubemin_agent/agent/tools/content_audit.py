@@ -7,6 +7,7 @@ from typing import Any
 
 from kubemin_agent.agent.tools.base import Tool
 from kubemin_agent.agent.tools.mcp_client import MCPClient
+from kubemin_agent.agent.tools.summarizer import ToolResultSummarizer
 
 MAX_TEXT_PREVIEW_LENGTH = 1000
 MAX_IMAGE_LIST = 20
@@ -31,6 +32,7 @@ class ContentAuditTool(Tool):
     def __init__(self, mcp: MCPClient) -> None:
         self._mcp = mcp
         self._patterns = [re.compile(p, re.IGNORECASE) for p in SENSITIVE_PATTERNS]
+        self._summarizer = ToolResultSummarizer(max_output_chars=MAX_TEXT_PREVIEW_LENGTH)
 
     @property
     def name(self) -> str:
@@ -103,9 +105,11 @@ class ContentAuditTool(Tool):
             lines.append("No sensitive content detected.")
 
         # Text preview
-        preview = text[:MAX_TEXT_PREVIEW_LENGTH].strip()
-        if len(text) > MAX_TEXT_PREVIEW_LENGTH:
-            preview += f"\n... [truncated, total {len(text)} chars]"
+        preview = self._summarizer.summarize(
+            text,
+            title="content_audit_snapshot",
+            extra_signal_patterns=[r"\bcoin\b", r"\bgold\b", r"\berror\b", r"\bwarning\b"],
+        )
         lines.append(f"\nText preview:\n{preview}")
 
         return "\n".join(lines)
@@ -165,7 +169,12 @@ class ContentAuditTool(Tool):
 
         lines: list[str] = ["[Console Audit]"]
         if raw.strip():
-            lines.append(raw[:1000])
+            lines.append(
+                self._summarizer.summarize(
+                    raw,
+                    title="content_audit_console",
+                )
+            )
         else:
             lines.append("No console errors or warnings.")
 

@@ -48,6 +48,24 @@ class StubAgent:
         return f"{self.name}:{message}"
 
 
+class ContextAwareAgent(StubAgent):
+    """Agent that can receive scheduler context envelope and expose the latest one for assertions."""
+
+    def __init__(self, name: str, delay: float = 0.0) -> None:
+        super().__init__(name=name, delay=delay)
+        self.last_envelope = None
+
+    async def run(  # type: ignore[override]
+        self,
+        message: str,
+        session_key: str,
+        request_id: str = "",
+        context_envelope=None,
+    ) -> str:
+        self.last_envelope = context_envelope
+        return await super().run(message, session_key, request_id)
+
+
 def _build_scheduler(tmp_path: Path, max_parallelism: int = 4) -> tuple[Scheduler, AgentRegistry]:
     registry = AgentRegistry()
     scheduler = Scheduler(
@@ -224,3 +242,38 @@ async def test_scheduler_writes_evaluation_and_keeps_response(tmp_path: Path) ->
     assert evaluation_entries[0]["passed"] is False
     assert evaluation_entries[0]["overall_score"] == 45
     assert evaluation_entries[0]["task_id"] == "t1"
+
+
+@pytest.mark.asyncio
+async def test_scheduler_passes_dependency_context_envelope(tmp_path: Path) -> None:
+    scheduler, registry = _build_scheduler(tmp_path)
+    first = ContextAwareAgent("general")
+    second = ContextAwareAgent("k8s")
+    registry.register(first)
+    registry.register(second)
+
+    plan = DispatchPlan(
+        tasks=[
+            SubTask(task_id="t1", agent_name="general", description="collect cluster status"),
+            SubTask(
+                task_id="t2",
+                agent_name="k8s",
+                description="analyze and provide fix suggestions",
+                depends_on=["t1"],
+            ),
+        ],
+        execution_mode="sequential",
+    )
+
+    await scheduler.execute_plan(
+        plan=plan,
+        original_message="排查集群异常并给出修复建议",
+        session_key="cli:test_ctx",
+        request_id="req-ctx",
+    )
+
+    assert second.last_envelope is not None
+    prompt = second.last_envelope.to_system_prompt()
+    assert "[SHARED TASK CONTEXT]" in prompt
+    assert "t1" in prompt
+    assert "collect cluster status" in prompt or "general:collect cluster status" in prompt

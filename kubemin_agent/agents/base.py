@@ -10,6 +10,7 @@ from typing import Any
 
 from loguru import logger
 
+from kubemin_agent.agent.memory import MemoryStore
 from kubemin_agent.agent.tools.registry import ToolRegistry
 from kubemin_agent.providers.base import LLMProvider
 from kubemin_agent.session.manager import SessionManager
@@ -28,6 +29,9 @@ class BaseAgent(ABC):
     DEFAULT_MIN_RECENT_HISTORY_MESSAGES = 4
     DEFAULT_TASK_ANCHOR_MAX_CHARS = 600
     DEFAULT_HISTORY_MESSAGE_MAX_CHARS = 1200
+    DEFAULT_MEMORY_BACKEND = "file"
+    DEFAULT_MEMORY_TOP_K = 5
+    DEFAULT_MEMORY_CONTEXT_MAX_CHARS = 1400
 
     def __init__(
         self,
@@ -39,6 +43,9 @@ class BaseAgent(ABC):
         min_recent_history_messages: int = DEFAULT_MIN_RECENT_HISTORY_MESSAGES,
         task_anchor_max_chars: int = DEFAULT_TASK_ANCHOR_MAX_CHARS,
         history_message_max_chars: int = DEFAULT_HISTORY_MESSAGE_MAX_CHARS,
+        memory_backend: str = DEFAULT_MEMORY_BACKEND,
+        memory_top_k: int = DEFAULT_MEMORY_TOP_K,
+        memory_context_max_chars: int = DEFAULT_MEMORY_CONTEXT_MAX_CHARS,
     ) -> None:
         self.provider = provider
         self.sessions = sessions
@@ -48,11 +55,15 @@ class BaseAgent(ABC):
         self._min_recent_history_messages = max(0, min_recent_history_messages)
         self._task_anchor_max_chars = max(120, task_anchor_max_chars)
         self._history_message_max_chars = max(120, history_message_max_chars)
+        self._memory_backend = memory_backend
+        self._memory_top_k = max(0, memory_top_k)
+        self._memory_context_max_chars = max(240, memory_context_max_chars)
         self._trace_task_id = ""
         self._trace_capture_enabled = True
         self._max_trace_steps = 50
         self._trace_events: list[dict[str, Any]] = []
         self._trace_step_index = 0
+        self._memory = self._init_memory_store(memory_backend)
         self.tools = ToolRegistry()
         self._register_tools()
 
@@ -97,7 +108,13 @@ class BaseAgent(ABC):
         """Register this agent's domain-specific tools."""
         pass
 
-    async def run(self, message: str, session_key: str, request_id: str = "") -> str:
+    async def run(
+        self,
+        message: str,
+        session_key: str,
+        request_id: str = "",
+        context_envelope: Any | None = None,
+    ) -> str:
         """
         Execute the LLM + tool call loop.
 
@@ -115,14 +132,22 @@ class BaseAgent(ABC):
         self._trace_events = []
         self._trace_step_index = 0
         task_anchor = self._build_task_anchor(message)
+        shared_context = self._render_shared_context(context_envelope)
+        memory_context = await self._load_memory_context(query=message)
+        extra_sections = [section for section in (shared_context, memory_context) if section]
         selected_history = self._select_history_for_budget(
             history=history,
             task_message=message,
             task_anchor=task_anchor,
+            extra_sections=extra_sections,
         )
 
         messages: list[dict[str, Any]] = [{"role": "system", "content": self.system_prompt}]
         messages.append({"role": "system", "content": task_anchor})
+        if shared_context:
+            messages.append({"role": "system", "content": shared_context})
+        if memory_context:
+            messages.append({"role": "system", "content": memory_context})
         messages.extend(selected_history)
         messages.append({"role": "user", "content": message})
         self._record_reasoning_step(
@@ -133,7 +158,9 @@ class BaseAgent(ABC):
             observation_summary=(
                 f"history_selected={len(selected_history)}, "
                 f"history_total={len(history)}, "
-                f"context_budget_tokens={self._max_context_tokens}"
+                f"context_budget_tokens={self._max_context_tokens}, "
+                f"shared_context={'on' if shared_context else 'off'}, "
+                f"memory_context={'on' if memory_context else 'off'}"
             ),
             request_id=request_id,
         )
@@ -248,6 +275,7 @@ class BaseAgent(ABC):
         history: list[dict[str, Any]],
         task_message: str,
         task_anchor: str,
+        extra_sections: list[str] | None = None,
     ) -> list[dict[str, Any]]:
         """Select recent history with token budgeting instead of fixed window size."""
         base_tokens = (
@@ -256,6 +284,8 @@ class BaseAgent(ABC):
             + self._estimate_tokens(task_message)
             + 256
         )
+        if extra_sections:
+            base_tokens += sum(self._estimate_tokens(section) for section in extra_sections)
         history_budget = max(0, self._max_context_tokens - base_tokens)
         if not history:
             return []
@@ -309,6 +339,55 @@ class BaseAgent(ABC):
         events = list(self._trace_events)
         self._trace_events = []
         return events
+
+    def _init_memory_store(self, backend_type: str) -> MemoryStore | None:
+        """Initialize memory store; fallback to file backend if custom backend is unavailable."""
+        try:
+            return MemoryStore.create(self._workspace, backend_type=backend_type)
+        except Exception as e:  # noqa: BLE001
+            logger.warning(
+                f"[{self.name}] Failed to init memory backend '{backend_type}': {e}"
+            )
+            if backend_type == "file":
+                return None
+            try:
+                logger.warning(f"[{self.name}] Falling back to memory backend 'file'")
+                return MemoryStore.create(self._workspace, backend_type="file")
+            except Exception as inner_e:  # noqa: BLE001
+                logger.warning(f"[{self.name}] Failed to init fallback memory backend: {inner_e}")
+                return None
+
+    async def _load_memory_context(self, query: str) -> str:
+        """Load query-driven memory context for current task message."""
+        if not self._memory or self._memory_top_k <= 0:
+            return ""
+
+        try:
+            memory_context = await self._memory.get_context(query=query, top_k=self._memory_top_k)
+        except Exception as e:  # noqa: BLE001
+            logger.warning(f"[{self.name}] Failed to load memory context: {e}")
+            return ""
+
+        if not memory_context.strip():
+            return ""
+
+        compact = self._compact_text(memory_context, self._memory_context_max_chars)
+        return f"[RELEVANT MEMORY]\n{compact}"
+
+    def _render_shared_context(self, context_envelope: Any | None) -> str:
+        """Render scheduler-provided cross-agent context into prompt text."""
+        if not context_envelope:
+            return ""
+
+        to_prompt = getattr(context_envelope, "to_system_prompt", None)
+        if callable(to_prompt):
+            try:
+                rendered = to_prompt(max_chars=self._history_message_max_chars)
+            except TypeError:
+                rendered = to_prompt()
+            return str(rendered) if rendered else ""
+
+        return self._compact_text(str(context_envelope), self._history_message_max_chars)
 
     def _log_tool_call(
         self,

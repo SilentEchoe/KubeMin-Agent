@@ -6,6 +6,7 @@ from typing import Any
 
 from kubemin_agent.agent.tools.base import Tool
 from kubemin_agent.agent.tools.mcp_client import MCPClient
+from kubemin_agent.agent.tools.summarizer import ToolResultSummarizer
 
 MAX_CONTENT_LENGTH = 4000
 
@@ -21,6 +22,7 @@ class BrowserTool(Tool):
 
     def __init__(self, mcp: MCPClient) -> None:
         self._mcp = mcp
+        self._summarizer = ToolResultSummarizer(max_output_chars=MAX_CONTENT_LENGTH)
 
     @property
     def name(self) -> str:
@@ -147,23 +149,37 @@ class BrowserTool(Tool):
                 value = kwargs.get("value", "")
                 if not value:
                     return "Error: 'value' (JavaScript code) is required."
-                return await self._mcp.call_tool("evaluate_script", {"function": value})
+                result = await self._mcp.call_tool("evaluate_script", {"function": value})
+                return self._summarizer.summarize(
+                    result,
+                    title="browser_evaluate",
+                )
 
             elif action == "snapshot":
                 result = await self._mcp.call_tool("take_snapshot", {})
-                if len(result) > MAX_CONTENT_LENGTH:
-                    result = result[:MAX_CONTENT_LENGTH] + f"\n... [truncated, total {len(result)} chars]"
-                return result
+                return self._summarizer.summarize(
+                    result,
+                    title="browser_snapshot",
+                    extra_signal_patterns=[r"\bbutton\b", r"\blink\b", r"\binput\b", r"\buid\b"],
+                )
 
             elif action == "press_key":
                 key = kwargs.get("value", "Enter")
                 return await self._mcp.call_tool("press_key", {"key": key})
 
             elif action == "console_logs":
-                return await self._mcp.call_tool("list_console_messages", {})
+                result = await self._mcp.call_tool("list_console_messages", {})
+                return self._summarizer.summarize(
+                    result,
+                    title="browser_console_logs",
+                )
 
             elif action == "network":
-                return await self._mcp.call_tool("list_network_requests", {})
+                result = await self._mcp.call_tool("list_network_requests", {})
+                return self._summarizer.summarize(
+                    result,
+                    title="browser_network_requests",
+                )
 
             else:
                 return f"Error: Unknown action '{action}'"

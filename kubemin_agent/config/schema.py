@@ -16,6 +16,9 @@ class AgentDefaults(BaseModel):
     min_recent_history_messages: int = 4
     task_anchor_max_chars: int = 600
     history_message_max_chars: int = 1200
+    memory_backend: str = "file"
+    memory_top_k: int = 5
+    memory_context_max_chars: int = 1400
     temperature: float = 0.7
     max_tool_iterations: int = 20
 

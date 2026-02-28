@@ -35,6 +35,9 @@ class ControlPlaneRuntime:
         min_recent_history_messages: int = 4,
         task_anchor_max_chars: int = 600,
         history_message_max_chars: int = 1200,
+        memory_backend: str = "file",
+        memory_top_k: int = 5,
+        memory_context_max_chars: int = 1400,
         evaluation_enabled: bool = True,
         evaluation_warn_threshold: int = 60,
         evaluation_llm_judge_enabled: bool = True,
@@ -50,6 +53,9 @@ class ControlPlaneRuntime:
         self.min_recent_history_messages = min_recent_history_messages
         self.task_anchor_max_chars = task_anchor_max_chars
         self.history_message_max_chars = history_message_max_chars
+        self.memory_backend = memory_backend
+        self.memory_top_k = memory_top_k
+        self.memory_context_max_chars = memory_context_max_chars
 
         self.sessions = SessionManager(workspace)
         self.audit = AuditLog(workspace.parent)
@@ -96,6 +102,9 @@ class ControlPlaneRuntime:
             min_recent_history_messages=config.agents.defaults.min_recent_history_messages,
             task_anchor_max_chars=config.agents.defaults.task_anchor_max_chars,
             history_message_max_chars=config.agents.defaults.history_message_max_chars,
+            memory_backend=config.agents.defaults.memory_backend,
+            memory_top_k=config.agents.defaults.memory_top_k,
+            memory_context_max_chars=config.agents.defaults.memory_context_max_chars,
             evaluation_enabled=config.evaluation.enabled,
             evaluation_warn_threshold=config.evaluation.warn_threshold,
             evaluation_llm_judge_enabled=config.evaluation.llm_judge_enabled,
@@ -114,6 +123,9 @@ class ControlPlaneRuntime:
             "min_recent_history_messages": self.min_recent_history_messages,
             "task_anchor_max_chars": self.task_anchor_max_chars,
             "history_message_max_chars": self.history_message_max_chars,
+            "memory_backend": self.memory_backend,
+            "memory_top_k": self.memory_top_k,
+            "memory_context_max_chars": self.memory_context_max_chars,
         }
         self.registry.register(
             GeneralAgent(self.provider, self.sessions, **agent_kwargs)

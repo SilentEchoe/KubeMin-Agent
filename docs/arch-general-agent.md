@@ -34,6 +34,8 @@ GeneralAgent (extends BaseAgent)
 | 中控调度接入 | 已实现 | 通过 ControlPlaneRuntime 注册到 AgentRegistry, 由 Scheduler 调度 |
 | 执行轨迹摘要 | 已实现 | 在工具调用前后产出 `reasoning_step` 结构化执行摘要 |
 | 在线质量评估 | 已实现 | Scheduler 执行后写入 `evaluation` 审计事件 |
+| 跨任务上下文继承 | 已实现 | 支持接收 Scheduler 下发的 `ContextEnvelope`，复用依赖任务发现 |
+| 查询驱动记忆注入 | 已实现 | 按当前任务 query 召回 MemoryStore 并注入上下文 |
 | 文件读写 | 已实现 | ReadFileTool + WriteFileTool, workspace 沙箱限制 |
 | Shell 命令执行 | 已实现 | ShellTool, 命令白名单 + 危险模式阻断 |
 | Web 搜索 | 规划中 | 搜索引擎查询和网页抓取 |
@@ -68,6 +70,7 @@ GeneralAgent (extends BaseAgent)
 
 | 日期 | 变更 | 原因 |
 |------|------|------|
+| 2026-02-28 | 支持 `ContextEnvelope` 跨任务上下文继承与查询驱动记忆注入 | 减少重复探索，提升复杂任务上下文利用率 |
 | 2026-02-27 | 接入在线评估与 `reasoning_step` 结构化轨迹 | 解决执行黑盒问题, 提升可观测性 |
 | 2026-02-26 | 实现 ReadFileTool + WriteFileTool + ShellTool | MVP 工具集, 使 GeneralAgent 可实际处理用户请求 |
 | 2026-02-26 | 接入中控运行时, 由 Scheduler 默认调度执行 | 落地 Agent Control Plane 主链路 |

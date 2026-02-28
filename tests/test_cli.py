@@ -29,6 +29,9 @@ def mock_config(tmp_path: Path):
     mock_cfg.agents.defaults.min_recent_history_messages = 4
     mock_cfg.agents.defaults.task_anchor_max_chars = 600
     mock_cfg.agents.defaults.history_message_max_chars = 1200
+    mock_cfg.agents.defaults.memory_backend = "file"
+    mock_cfg.agents.defaults.memory_top_k = 5
+    mock_cfg.agents.defaults.memory_context_max_chars = 1400
     mock_cfg.agents.defaults.temperature = 0.5
     mock_cfg.agents.defaults.max_tool_iterations = 20
     

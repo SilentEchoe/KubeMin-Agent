@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import dataclasses
+import inspect
 import json
 import time
 import uuid
@@ -12,6 +13,7 @@ from typing import Any
 
 from loguru import logger
 
+from kubemin_agent.control.agent_context import AgentContextStore, ContextEnvelope
 from kubemin_agent.control.audit import AuditLog
 from kubemin_agent.control.evaluation import ExecutionEvaluator
 from kubemin_agent.control.registry import AgentRegistry
@@ -44,6 +46,7 @@ class TaskExecutionResult:
 
     task_id: str
     content: str
+    agent_name: str = ""
     failed: bool = False
 
 
@@ -316,6 +319,7 @@ class Scheduler:
         completed: set[str] = set()
         results: dict[str, TaskExecutionResult] = {}
         execution_order: list[str] = []
+        context_store = AgentContextStore()
         stopped_by_fail_fast = False
 
         while remaining:
@@ -348,6 +352,7 @@ class Scheduler:
                     completed=completed,
                     results=results,
                     execution_order=execution_order,
+                    context_store=context_store,
                     original_message=original_message,
                     session_key=session_key,
                     request_id=request_id,
@@ -358,16 +363,29 @@ class Scheduler:
                 continue
 
             task = ready[0]
+            context_envelope = context_store.build_envelope(
+                task_id=task.task_id,
+                agent_name=task.agent_name,
+                task_description=task.description,
+                original_message=original_message,
+                depends_on=task.depends_on,
+            )
             task_result = await self._execute_task(
                 task=task,
                 original_message=original_message,
                 session_key=session_key,
                 request_id=request_id,
+                context_envelope=context_envelope,
             )
             results[task.task_id] = task_result
             execution_order.append(task.task_id)
             remaining.pop(task.task_id, None)
             completed.add(task.task_id)
+            context_store.add_result(
+                task_id=task.task_id,
+                agent_name=task_result.agent_name or task.agent_name,
+                result=task_result.content,
+            )
 
             if self.fail_fast and task_result.failed:
                 stopped_by_fail_fast = True
@@ -387,6 +405,7 @@ class Scheduler:
         completed: set[str],
         results: dict[str, TaskExecutionResult],
         execution_order: list[str],
+        context_store: AgentContextStore,
         original_message: str,
         session_key: str,
         request_id: str,
@@ -396,6 +415,16 @@ class Scheduler:
 
         for i in range(0, len(ready), self.max_parallelism):
             chunk = ready[i : i + self.max_parallelism]
+            envelopes = {
+                task.task_id: context_store.build_envelope(
+                    task_id=task.task_id,
+                    agent_name=task.agent_name,
+                    task_description=task.description,
+                    original_message=original_message,
+                    depends_on=task.depends_on,
+                )
+                for task in chunk
+            }
             chunk_results = await asyncio.gather(
                 *[
                     self._execute_task(
@@ -403,6 +432,7 @@ class Scheduler:
                         original_message=original_message,
                         session_key=session_key,
                         request_id=request_id,
+                        context_envelope=envelopes.get(task.task_id),
                     )
                     for task in chunk
                 ]
@@ -413,6 +443,11 @@ class Scheduler:
                 execution_order.append(task.task_id)
                 remaining.pop(task.task_id, None)
                 completed.add(task.task_id)
+                context_store.add_result(
+                    task_id=task.task_id,
+                    agent_name=task_result.agent_name or task.agent_name,
+                    result=task_result.content,
+                )
                 failed_in_round = failed_in_round or task_result.failed
 
             if self.fail_fast and failed_in_round:
@@ -426,6 +461,7 @@ class Scheduler:
         original_message: str,
         session_key: str,
         request_id: str,
+        context_envelope: ContextEnvelope | None = None,
     ) -> TaskExecutionResult:
         """Execute one task with logging and validation."""
         agent = self.registry.get(task.agent_name)
@@ -436,6 +472,7 @@ class Scheduler:
                 return TaskExecutionResult(
                     task_id=task.task_id,
                     content=f"Error: No agent available for task: {task.description}",
+                    agent_name=task.agent_name,
                     failed=True,
                 )
 
@@ -453,7 +490,13 @@ class Scheduler:
         self._prepare_agent_trace(agent=agent, task_id=task.task_id)
 
         try:
-            result = await agent.run(task.description, session_key, request_id=request_id)
+            result = await self._run_agent(
+                agent=agent,
+                task_description=task.description,
+                session_key=session_key,
+                request_id=request_id,
+                context_envelope=context_envelope,
+            )
             duration_ms = (time.monotonic() - start_time) * 1000
             self.audit.log_execution(
                 session_key=session_key,
@@ -515,12 +558,18 @@ class Scheduler:
                 return TaskExecutionResult(
                     task_id=task.task_id,
                     content=f"[Validation Blocked] {validation.reason}\n\n{sanitized}",
+                    agent_name=agent.name,
                     failed=True,
                 )
 
             sanitized = f"[Validation Warning] {validation.reason}\n\n{sanitized}"
 
-        return TaskExecutionResult(task_id=task.task_id, content=sanitized, failed=failed)
+        return TaskExecutionResult(
+            task_id=task.task_id,
+            content=sanitized,
+            agent_name=agent.name,
+            failed=failed,
+        )
 
     def _prepare_agent_trace(self, agent: Any, task_id: str) -> None:
         """Inject trace context/config into agents that support it."""
@@ -531,6 +580,38 @@ class Scheduler:
         set_trace_capture = getattr(agent, "set_trace_capture", None)
         if callable(set_trace_capture):
             set_trace_capture(enabled=self.trace_capture, max_steps=self.max_trace_steps)
+
+    async def _run_agent(
+        self,
+        *,
+        agent: Any,
+        task_description: str,
+        session_key: str,
+        request_id: str,
+        context_envelope: ContextEnvelope | None,
+    ) -> str:
+        """Run an agent while keeping backward compatibility for legacy run signatures."""
+        run_callable = getattr(agent, "run")
+        supports_context_envelope = False
+        try:
+            params = inspect.signature(run_callable).parameters
+            supports_context_envelope = "context_envelope" in params
+        except (TypeError, ValueError):
+            supports_context_envelope = False
+
+        if supports_context_envelope:
+            return await run_callable(  # type: ignore[misc]
+                task_description,
+                session_key,
+                request_id=request_id,
+                context_envelope=context_envelope,
+            )
+
+        return await run_callable(  # type: ignore[misc]
+            task_description,
+            session_key,
+            request_id=request_id,
+        )
 
     def _consume_agent_trace(self, agent: Any) -> list[dict[str, Any]]:
         """Collect and clear latest trace events from agent when available."""

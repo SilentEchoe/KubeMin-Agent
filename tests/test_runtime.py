@@ -55,6 +55,9 @@ def test_runtime_from_config_applies_context_budget_to_agents(tmp_path: Path) ->
     config.agents.defaults.min_recent_history_messages = 6
     config.agents.defaults.task_anchor_max_chars = 480
     config.agents.defaults.history_message_max_chars = 900
+    config.agents.defaults.memory_backend = "jsonl"
+    config.agents.defaults.memory_top_k = 3
+    config.agents.defaults.memory_context_max_chars = 1000
 
     runtime = ControlPlaneRuntime.from_config(config, RoutingProvider(), workspace)
     general = runtime.registry.get("general")
@@ -63,3 +66,6 @@ def test_runtime_from_config_applies_context_budget_to_agents(tmp_path: Path) ->
     assert general._min_recent_history_messages == 6
     assert general._task_anchor_max_chars == 480
     assert general._history_message_max_chars == 900
+    assert general._memory_backend == "jsonl"
+    assert general._memory_top_k == 3
+    assert general._memory_context_max_chars == 1000

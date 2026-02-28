@@ -83,8 +83,9 @@
 | 执行可观测 (reasoning_step) | 已实现 | 结构化步骤可追踪 |
 | 在线质量评估 (evaluation) | 已实现 | 规则分 + LLM 语义分 |
 | 上下文动态预算 | 已实现(核心) | 控制面子 Agent 已改为 token 预算裁剪历史，不再固定 10 轮 |
-| 工具结果摘要层 | 未实现 | 主要依赖硬截断，信息损失不可控 |
-| 跨 Agent 共享上下文对象 | 未实现 | 任务传递仍以纯文本为主 |
+| 工具结果摘要层 | 已实现(核心) | 新增语义摘要器，Browser/ContentAudit 大输出不再仅字符截断 |
+| 跨 Agent 共享上下文对象 | 已实现(核心) | Scheduler 已可基于依赖任务传递结构化 `ContextEnvelope` |
+| 查询驱动记忆注入 | 已实现(核心) | BaseAgent 已按任务 query 召回记忆并注入 prompt |
 | 基准集回放评测 | 未实现 | 暂无标准化离线回归集 |
 
 ### 5.2 主要技术债
@@ -165,38 +166,41 @@ flowchart LR
 - 上述预算参数已配置化并由 `ControlPlaneRuntime.from_config()` 注入默认子 Agent
 - legacy `AgentLoop` 也已接入同一预算策略，避免双轨行为不一致
 
-### M3 (P1): 工具结果语义摘要层
+### M3 (P1, 已完成核心实现): 工具结果语义摘要层
 
 目标:
 - 对 snapshot/network/console 等大输出先摘要再入上下文
 
-拟改动:
-- 新增 `agent/tools/summarizer.py`
-- 集成至 `browser.py`、`content_audit.py`
+实施结果:
+- 新增 `agent/tools/summarizer.py`（语义信号提取 + 头尾摘录）
+- 已集成到 `browser.py` 的 `snapshot/network/console/evaluate` 路径
+- 已集成到 `content_audit.py` 的 snapshot/console 预览路径
 
 验收:
 - 上下文长度下降且关键错误信息召回不下降
 
-### M4 (P1): 跨 Agent 上下文传递
+### M4 (P1, 已完成核心实现): 跨 Agent 上下文传递
 
 目标:
 - 多任务编排时共享中间发现，减少重复探索
 
-拟改动:
-- `control/agent_context.py` (新)
-- `control/scheduler.py`、`agents/base.py`
+实施结果:
+- 新增 `control/agent_context.py`，定义 `ContextEnvelope` 与 `AgentContextStore`
+- `control/scheduler.py` 已在 `depends_on` 链路传递共享发现
+- `agents/base.py` 已支持 `context_envelope` 注入系统上下文
 
 验收:
 - 依赖任务能复用前序任务发现，不重复工具调用
 
-### M5 (P1): 记忆检索策略升级
+### M5 (P1, 已完成核心实现): 记忆检索策略升级
 
 目标:
 - `MemoryStore` 从“默认列举”升级为“查询驱动检索优先”
 
-拟改动:
-- `agent/memory/store.py`、`agent/context.py`
-- 后端策略与配置项联动 (`file/jsonl/chroma`)
+实施结果:
+- `BaseAgent` 改为按 `query=task_message` 召回记忆并注入 prompt
+- 后端策略已配置联动：`memory_backend`/`memory_top_k`/`memory_context_max_chars`
+- `ControlPlaneRuntime.from_config()` 已将记忆策略下发到默认子 Agent
 
 验收:
 - 相关记忆命中率提升，prompt 体积可控
@@ -263,6 +267,7 @@ flowchart LR
 
 | 日期 | 变更 | 原因 |
 |---|---|---|
+| 2026-02-28 | M3-M5 核心能力落地：语义摘要层、跨 Agent `ContextEnvelope`、查询驱动记忆注入 | 提升复杂任务信息复用与上下文效率，减少硬截断信息损失 |
 | 2026-02-27 | legacy AgentLoop 收敛到与控制面一致的上下文预算与任务锚点策略 | 消除执行链路策略分叉，提升行为一致性 |
 | 2026-02-27 | M2 核心能力落地: 控制面子 Agent 接入动态上下文预算与任务锚点 | 解决长任务目标漂移与固定 10 轮窗口问题 |
 | 2026-02-27 | 重构文档为专业版上下文工程设计与路线图，纳入在线评估与可观测能力 | 对齐当前实现，提供可执行演进计划 |
