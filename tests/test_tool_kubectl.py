@@ -59,7 +59,7 @@ def test_check_safety_namespaces(restricted_tool):
     assert restricted_tool._check_safety("get pods -n default") is None
     assert restricted_tool._check_safety("get pods --namespace kube-system") is None
     assert restricted_tool._check_safety("get pods -n=default") is None
-    
+
     # Blocked
     assert "not allowed" in restricted_tool._check_safety("get pods -n production")
 
@@ -80,7 +80,7 @@ async def test_execute_success(mock_create_proc, tool):
     mock_proc.returncode = 0
     mock_proc.communicate.return_value = (b"pod1\npod2", b"")
     mock_create_proc.return_value = mock_proc
-    
+
     result = await tool.execute(command="get pods")
     assert "pod1" in result
     assert "pod2" in result
@@ -97,11 +97,11 @@ async def test_execute_success(mock_create_proc, tool):
 async def test_execute_timeout(mock_create_proc, mock_wait, tool):
     """Test execution timeout."""
     import asyncio
-    
+
     mock_proc = AsyncMock()
     mock_create_proc.return_value = mock_proc
     mock_wait.side_effect = asyncio.TimeoutError()
-    
+
     result = await tool.execute(command="get pods")
     assert "timed out" in result
     mock_proc.kill.assert_called_once()

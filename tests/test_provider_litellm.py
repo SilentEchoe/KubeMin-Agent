@@ -1,6 +1,5 @@
 """Tests for LiteLLM Provider."""
 
-import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -23,7 +22,7 @@ async def test_chat_basic(provider):
     mock_choice.message.tool_calls = None
     mock_choice.finish_reason = "stop"
     mock_response.choices = [mock_choice]
-    
+
     mock_response.usage.prompt_tokens = 10
     mock_response.usage.completion_tokens = 20
     mock_response.usage.total_tokens = 30
@@ -57,12 +56,12 @@ async def test_chat_with_tool_calls(provider):
     mock_response = MagicMock()
     mock_choice = MagicMock()
     mock_choice.message.content = None
-    
+
     mock_tc1 = MagicMock()
     mock_tc1.id = "call_1"
     mock_tc1.function.name = "get_weather"
     mock_tc1.function.arguments = '{"location": "Tokyo"}'
-    
+
     # Test fallback parsing when JSON is invalid
     mock_tc2 = MagicMock()
     mock_tc2.id = "call_2"
@@ -90,11 +89,11 @@ async def test_chat_with_tool_calls(provider):
 
         assert response.has_tool_calls
         assert len(response.tool_calls) == 2
-        
+
         tc1 = response.tool_calls[0]
         assert tc1.name == "get_weather"
         assert tc1.arguments == {"location": "Tokyo"}
-        
+
         tc2 = response.tool_calls[1]
         assert tc2.name == "bad_json_tool"
         assert tc2.arguments == {"raw": "not valid json"}

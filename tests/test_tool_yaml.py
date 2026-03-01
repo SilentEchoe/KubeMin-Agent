@@ -46,7 +46,7 @@ async def test_validator_empty_document(tool):
     """Test catching empty documents."""
     result = await tool.execute(content="")
     assert "INVALID: empty YAML document" in result
-    
+
     result2 = await tool.execute(content="---\n---\n")
     assert "INVALID: no YAML documents found" in result2
 
@@ -100,11 +100,11 @@ spec:
     - "not a dict"
     """
     result = await tool.execute(content=bad_components_yaml)
-    
+
     # Missing name is a warning
     assert "Warnings:" in result
     assert "missing 'name'" in result
-    
+
     # Not a dict is an error
     assert "Errors:" in result
     assert "spec.components[1] should be a mapping" in result

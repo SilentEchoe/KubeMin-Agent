@@ -1,6 +1,4 @@
 import json
-import tempfile
-from pathlib import Path
 
 import pytest
 from typer.testing import CliRunner
@@ -17,10 +15,10 @@ def runner():
 def temp_workspace(tmp_path):
     workspace = tmp_path / "workspace"
     workspace.mkdir()
-    
+
     audit_dir = tmp_path / "audit"
     audit_dir.mkdir()
-    
+
     # Create some dummy audit logs
     log_file = audit_dir / "2026-02-28.jsonl"
     with open(log_file, "w") as f:
@@ -56,7 +54,7 @@ def temp_workspace(tmp_path):
             "request_id": "req-123",
             "timestamp": "2026-02-28T09:59:00"
         }) + "\n")
-        
+
     # We need to mock load_config and ensure_workspace, but it's easier to mock the audit_dir
     # discovery right in the command itself or via monkeypatch.
     # Since we don't want to mess with patching internal config loads, we can mock `from kubemin_agent.cli.commands import ensure_workspace`
@@ -67,13 +65,13 @@ def test_logs_command_basic(runner, temp_workspace, monkeypatch):
     import kubemin_agent.cli.commands as commands
     class MockConfig:
         pass
-        
+
     def mock_load_config(*args):
         return MockConfig()
-        
+
     def mock_ensure_workspace(*args):
         return temp_workspace / "workspace"
-        
+
     monkeypatch.setattr(commands, "load_config", mock_load_config)
     monkeypatch.setattr(commands, "ensure_workspace", mock_ensure_workspace)
 
@@ -91,13 +89,13 @@ def test_logs_command_eval_only(runner, temp_workspace, monkeypatch):
     import kubemin_agent.cli.commands as commands
     class MockConfig:
         pass
-        
+
     def mock_load_config(*args):
         return MockConfig()
-        
+
     def mock_ensure_workspace(*args):
         return temp_workspace / "workspace"
-        
+
     monkeypatch.setattr(commands, "load_config", mock_load_config)
     monkeypatch.setattr(commands, "ensure_workspace", mock_ensure_workspace)
 
@@ -113,20 +111,20 @@ def test_logs_command_filter_session(runner, temp_workspace, monkeypatch):
     import kubemin_agent.cli.commands as commands
     class MockConfig:
         pass
-        
+
     def mock_load_config(*args):
         return MockConfig()
-        
+
     def mock_ensure_workspace(*args):
         return temp_workspace / "workspace"
-        
+
     monkeypatch.setattr(commands, "load_config", mock_load_config)
     monkeypatch.setattr(commands, "ensure_workspace", mock_ensure_workspace)
 
     result = runner.invoke(app, ["logs", "--session", "test-session"])
     assert result.exit_code == 0
     assert "Found 3 matching log entries" in result.output
-    
+
     result = runner.invoke(app, ["logs", "--session", "other-session"])
     assert result.exit_code == 0
     assert "No matching logs found" in result.output

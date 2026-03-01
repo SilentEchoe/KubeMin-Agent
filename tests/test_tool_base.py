@@ -48,7 +48,7 @@ def test_tool_schema_generation():
     """Test generating OpenAI function schema."""
     tool = DummyTool()
     schema = tool.to_schema()
-    
+
     assert schema["type"] == "function"
     assert schema["function"]["name"] == "dummy_tool"
     assert schema["function"]["description"] == "A tool for testing validation."
@@ -58,7 +58,7 @@ def test_tool_schema_generation():
 def test_tool_validation_success():
     """Test successful parameter validation."""
     tool = DummyTool()
-    
+
     valid_params = {
         "name": "Alice",
         "age": 30,
@@ -68,7 +68,7 @@ def test_tool_validation_success():
         "role": "admin",
         "metadata": {"key": "value"}
     }
-    
+
     errors = tool.validate_params(valid_params)
     assert len(errors) == 0
 
@@ -76,7 +76,7 @@ def test_tool_validation_success():
 def test_tool_validation_missing_required():
     """Test validation fails on missing required fields."""
     tool = DummyTool()
-    
+
     errors = tool.validate_params({"name": "Alice"})
     assert len(errors) == 1
     assert "missing required age" in errors[0]
@@ -85,12 +85,12 @@ def test_tool_validation_missing_required():
 def test_tool_validation_type_mismatch():
     """Test validation fails on type mismatch."""
     tool = DummyTool()
-    
+
     errors = tool.validate_params({
         "name": 123,  # Should be string
         "age": "thirty"  # Should be integer
     })
-    
+
     assert len(errors) >= 2
     assert any("name should be string" in e for e in errors)
     assert any("age should be integer" in e for e in errors)
@@ -99,14 +99,14 @@ def test_tool_validation_type_mismatch():
 def test_tool_validation_constraints():
     """Test validation constraints (min/max/enum)."""
     tool = DummyTool()
-    
+
     errors = tool.validate_params({
         "name": "Al",           # minLength is 3
         "age": 150,             # maximum is 120
         "score": -5.0,          # minimum is 0.0
         "role": "superadmin"    # not in enum
     })
-    
+
     assert len(errors) == 4
     assert any("name must be at least 3 chars" in e for e in errors)
     assert any("age must be <= 120" in e for e in errors)
@@ -117,14 +117,14 @@ def test_tool_validation_constraints():
 def test_tool_validation_nested_object():
     """Test validation of nested objects and arrays."""
     tool = DummyTool()
-    
+
     errors = tool.validate_params({
         "name": "Alice",
         "age": 30,
         "tags": [1, 2],         # Should be array of strings
         "metadata": {}          # Missing required 'key'
     })
-    
+
     assert len(errors) >= 2
     assert any("missing required metadata.key" in e for e in errors)
     assert any("tags[0] should be string" in e for e in errors)
@@ -136,7 +136,7 @@ def test_tool_bad_schema():
         @property
         def parameters(self) -> dict[str, Any]:
             return {"type": "array"}
-            
+
     tool = BadTool()
     with pytest.raises(ValueError, match="Schema must be object type"):
         tool.validate_params({})

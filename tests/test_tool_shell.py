@@ -50,7 +50,7 @@ def test_check_safety_unknown_commands(tool):
 def test_check_safety_malformed(tool):
     """Test empty or weirdly formatted commands."""
     assert "empty command" in tool._check_safety("   ")
-    
+
 
 @pytest.mark.asyncio
 async def test_execute_safety_first(tool):
@@ -69,9 +69,9 @@ async def test_execute_success(mock_create_proc, tool):
     # stdout, stderr returned by communicate() bytes
     mock_proc.communicate.return_value = (b"file1\nfile2", b"")
     mock_create_proc.return_value = mock_proc
-    
+
     result = await tool.execute(command="ls")
-    
+
     assert "file1" in result
     assert "file2" in result
     assert "[exit_code: 0]" in result
@@ -86,9 +86,9 @@ async def test_execute_with_stderr(mock_create_proc, tool):
     mock_proc.returncode = 1
     mock_proc.communicate.return_value = (b"", b"no such file or directory")
     mock_create_proc.return_value = mock_proc
-    
+
     result = await tool.execute(command="cat missing")
-    
+
     assert "[stderr]" in result
     assert "no such file or directory" in result
     assert "[exit_code: 1]" in result
@@ -100,12 +100,12 @@ async def test_execute_with_stderr(mock_create_proc, tool):
 async def test_execute_timeout(mock_create_proc, mock_wait, tool):
     """Test execution catching a timeout."""
     import asyncio
-    
+
     mock_proc = AsyncMock()
     mock_create_proc.return_value = mock_proc
     mock_wait.side_effect = asyncio.TimeoutError()
-    
+
     result = await tool.execute(command="echo wait", timeout=2)
-    
+
     assert "timed out after 2s" in result
     mock_proc.kill.assert_called_once()

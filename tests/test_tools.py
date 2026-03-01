@@ -1,6 +1,5 @@
 """Tests for agent tools: filesystem, shell, kubectl, yaml_validator."""
 
-import asyncio
 
 import pytest
 
