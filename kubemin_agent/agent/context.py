@@ -33,6 +33,7 @@ class ContextBuilder:
         self.history_message_max_chars = max(120, history_message_max_chars)
         self.memory = MemoryStore.create(workspace)
         self.skills = SkillsLoader(workspace)
+        self._bootstrap_cache: dict[str, tuple[float, str]] = {}
 
     def build_system_prompt(self, skill_names: list[str] | None = None) -> str:
         """
@@ -120,14 +121,22 @@ class ContextBuilder:
             return ""
 
     def _load_bootstrap_files(self) -> str:
-        """Load all bootstrap files from workspace."""
+        """Load all bootstrap files from workspace using an mtime cache."""
         parts: list[str] = []
 
         for filename in self.BOOTSTRAP_FILES:
             file_path = self.workspace / filename
             if file_path.exists():
-                content = file_path.read_text(encoding="utf-8")
-                parts.append(f"## {filename}\n\n{content}")
+                try:
+                    mtime = file_path.stat().st_mtime
+                    cached_mtime, cached_content = self._bootstrap_cache.get(filename, (0.0, ""))
+                    if mtime > cached_mtime:
+                        cached_content = file_path.read_text(encoding="utf-8")
+                        self._bootstrap_cache[filename] = (mtime, cached_content)
+                    
+                    parts.append(f"## {filename}\n\n{cached_content}")
+                except OSError:
+                    pass
 
         return "\n\n".join(parts) if parts else ""
 
@@ -308,7 +317,12 @@ class ContextBuilder:
 
     @staticmethod
     def _compact_text(text: str, max_chars: int) -> str:
-        """Compact long text with truncation hint."""
+        """Compact long text with truncation hint, keeping head and tail."""
         if len(text) <= max_chars:
             return text
-        return f"{text[:max_chars]} ...[truncated {len(text) - max_chars} chars]"
+        
+        # Keep 70% head, 30% tail
+        head_chars = int(max_chars * 0.7)
+        tail_chars = max_chars - head_chars
+        
+        return f"{text[:head_chars]}\n...[truncated {len(text) - max_chars} chars]...\n{text[-tail_chars:]}"

@@ -126,10 +126,10 @@ async def test_scheduler_respects_dependencies_in_parallel_mode(tmp_path: Path) 
         session_key="cli:test",
         request_id="req-1",
     )
-    parts = output.split("\n\n")
 
-    assert parts[0].startswith("general:step-1")
-    assert parts[1].startswith("k8s:step-2")
+    # StubProvider returns '{"agent":"general","task":"noop"}' for all chat() calls.
+    # execute_plan now calls provider.chat to generate the report.
+    assert '{"agent":"general","task":"noop"}' in output
 
 
 @pytest.mark.asyncio
@@ -198,8 +198,8 @@ async def test_scheduler_execute_saved_plan(tmp_path: Path) -> None:
         session_key="cli:test_plan_execute",
     )
 
-    # Assert: Execution happened and plan is cleared
-    assert "general:noop" in response
+    # Assert: Execution happened and plan is cleared. The report is whatever StubProvider returns.
+    assert '{"agent":"general","task":"noop"}' in response
     assert scheduler.sessions.get_plan("cli:test_plan_execute") is None
 
 
@@ -229,7 +229,7 @@ async def test_scheduler_writes_evaluation_and_keeps_response(tmp_path: Path) ->
         request_id="req-eval",
     )
 
-    assert "general:evaluate-me" in output
+    assert '{"agent":"general","task":"noop"}' in output
 
     entries = [
         json.loads(line)

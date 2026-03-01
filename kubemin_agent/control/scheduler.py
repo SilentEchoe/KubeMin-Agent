@@ -313,6 +313,9 @@ class Scheduler:
         """
         if not plan.tasks:
             return "Error: Dispatch plan is empty"
+            
+        # Initialize the active plan document
+        self.sessions.init_active_plan_doc(session_key, original_message, plan.tasks)
 
         index_map = {task.task_id: idx for idx, task in enumerate(plan.tasks)}
         remaining = {task.task_id: task for task in plan.tasks}
@@ -363,12 +366,21 @@ class Scheduler:
                 continue
 
             task = ready[0]
+            
+            # Mark task in progress
+            self.sessions.update_active_plan_task_status(session_key, task.task_id, "[-]")
+            
+            # Read active plan content
+            plan_path = self.sessions.get_active_plan_doc_path(session_key)
+            active_plan_text = plan_path.read_text(encoding="utf-8") if plan_path else "" 
+            
             context_envelope = context_store.build_envelope(
                 task_id=task.task_id,
                 agent_name=task.agent_name,
                 task_description=task.description,
                 original_message=original_message,
                 depends_on=task.depends_on,
+                active_plan_content=active_plan_text,
             )
             task_result = await self._execute_task(
                 task=task,
@@ -381,6 +393,11 @@ class Scheduler:
             execution_order.append(task.task_id)
             remaining.pop(task.task_id, None)
             completed.add(task.task_id)
+            
+            # Get summary and update task as completed
+            summary_text = context_store._summarize_result(task_result.content)
+            self.sessions.update_active_plan_task_status(session_key, task.task_id, "[x]", summary_text)
+            
             context_store.add_result(
                 task_id=task.task_id,
                 agent_name=task_result.agent_name or task.agent_name,
@@ -391,12 +408,44 @@ class Scheduler:
                 stopped_by_fail_fast = True
                 break
 
-        output_parts = [results[task_id].content for task_id in execution_order if task_id in results]
+        # Generate final execution report via LLM
+        raw_results_prompt = f"Original Objective: {original_message}\n\nTask Results:\n"
+        
+        for task_id in execution_order:
+            if task_id in results:
+                res = results[task_id]
+                status = "FAILED" if res.failed else "SUCCESS"
+                raw_results_prompt += f"--- Task {task_id} ({res.agent_name}) [{status}] ---\n{res.content}\n\n"
+                
         if stopped_by_fail_fast and remaining:
             skipped = ", ".join(sorted(remaining.keys()))
-            output_parts.append(f"[Scheduler] fail_fast enabled, skipped tasks: {skipped}")
+            raw_results_prompt += f"--- Skipped Tasks ---\n{skipped} (due to fail_fast)\n\n"
 
-        return "\n\n".join(output_parts)
+        system_prompt = (
+            "You are a technical report writer for KubeMin-Agent.\n"
+            "Your job is to read the raw results of a multi-step execution plan and synthesize "
+            "a single, cohesive, highly readable Markdown report for the user.\n"
+            "Rules:\n"
+            "- Start with a clear # Execution Report header.\n"
+            "- Summarize the overall outcome.\n"
+            "- Do not just blind-copy all raw logs; extract the most important findings/metrics/results.\n"
+            "- Highlight any failures or warnings.\n"
+            "- Keep a professional and objective tone."
+        )
+
+        try:
+            report_response = await self.provider.chat(
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": raw_results_prompt}
+                ]
+            )
+            final_report = report_response.content or "Error generating report."
+        except Exception as e:
+            logger.error(f"Failed to generate final report via LLM: {e}")
+            final_report = "Error: Plan completed but final report generation failed.\n\nRaw Results Preview:\n" + raw_results_prompt[:1000]
+
+        return final_report
 
     async def _execute_parallel_round(
         self,
@@ -415,6 +464,15 @@ class Scheduler:
 
         for i in range(0, len(ready), self.max_parallelism):
             chunk = ready[i : i + self.max_parallelism]
+            
+            # Read active plan content (once for the round)
+            plan_path = self.sessions.get_active_plan_doc_path(session_key)
+            active_plan_text = plan_path.read_text(encoding="utf-8") if plan_path else "" 
+
+            # Mark tasks in progress
+            for task in chunk:
+                self.sessions.update_active_plan_task_status(session_key, task.task_id, "[-]")
+                
             envelopes = {
                 task.task_id: context_store.build_envelope(
                     task_id=task.task_id,
@@ -422,6 +480,7 @@ class Scheduler:
                     task_description=task.description,
                     original_message=original_message,
                     depends_on=task.depends_on,
+                    active_plan_content=active_plan_text,
                 )
                 for task in chunk
             }
@@ -443,6 +502,11 @@ class Scheduler:
                 execution_order.append(task.task_id)
                 remaining.pop(task.task_id, None)
                 completed.add(task.task_id)
+                
+                # Get summary and update task as completed
+                summary_text = context_store._summarize_result(task_result.content)
+                self.sessions.update_active_plan_task_status(session_key, task.task_id, "[x]", summary_text)
+                
                 context_store.add_result(
                     task_id=task.task_id,
                     agent_name=task_result.agent_name or task.agent_name,

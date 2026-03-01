@@ -116,3 +116,57 @@ class SessionManager:
         if path.exists():
             path.unlink()
             logger.debug(f"Plan cleared: {session_key}")
+
+    def _active_plan_doc_path(self, session_key: str) -> Path:
+        """Get the file path for a session's active execution plan document."""
+        safe_key = session_key.replace(":", "_").replace("/", "_")
+        return self.sessions_dir / f"{safe_key}.active_plan.md"
+
+    def init_active_plan_doc(self, session_key: str, original_message: str, tasks: list[Any]) -> Path:
+        """Initialize the active plan markdown document."""
+        path = self._active_plan_doc_path(session_key)
+        
+        lines = [
+            f"# Active Execution Plan",
+            f"\n## Objective",
+            f"{original_message}",
+            f"\n## Tasks",
+        ]
+        
+        for t in tasks:
+            task_id = getattr(t, 'task_id', t.get('task_id') if isinstance(t, dict) else 'unknown')
+            agent = getattr(t, 'agent_name', t.get('agent_name') if isinstance(t, dict) else 'unknown')
+            desc = getattr(t, 'description', t.get('description') if isinstance(t, dict) else 'unknown')
+            lines.append(f"- [ ] **{task_id}** ({agent}): {desc}")
+            
+        path.write_text("\n".join(lines), encoding="utf-8")
+        return path
+
+    def update_active_plan_task_status(self, session_key: str, task_id: str, status: str, result_summary: str = "") -> None:
+        """Update a task's status in the active plan document. Status: '[-]' or '[x]'."""
+        path = self._active_plan_doc_path(session_key)
+        if not path.exists():
+            return
+            
+        content = path.read_text(encoding="utf-8")
+        lines = content.splitlines()
+        
+        for i, line in enumerate(lines):
+            if line.startswith("- [") and f"**{task_id}**" in line:
+                # Replace the checkbox marker (e.g. "- [ ]" or "- [-]") with the new status
+                new_line = line[:2] + status + line[5:]
+                if status == "[x]" and result_summary:
+                    # Append a concise summary snippet
+                    snippet = result_summary.replace("\n", " ")[:100]
+                    if len(result_summary) > 100:
+                        snippet += "..."
+                    new_line += f" -> *Result: {snippet}*"
+                lines[i] = new_line
+                break
+                
+        path.write_text("\n".join(lines), encoding="utf-8")
+
+    def get_active_plan_doc_path(self, session_key: str) -> Path | None:
+        """Get the path to the active plan doc if it exists."""
+        path = self._active_plan_doc_path(session_key)
+        return path if path.exists() else None

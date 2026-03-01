@@ -24,6 +24,7 @@ class ContextEnvelope:
     original_message: str
     dependency_findings: list[ContextFinding] = field(default_factory=list)
     global_findings: list[ContextFinding] = field(default_factory=list)
+    active_plan_content: str = ""
 
     def to_system_prompt(self, max_chars: int = 1400) -> str:
         """Render envelope into compact prompt text."""
@@ -33,21 +34,26 @@ class ContextEnvelope:
             f"Original request: {self.original_message[:260]}",
         ]
 
+        if self.active_plan_content:
+            lines.append(f"\n[ACTIVE EXECUTION PLAN]")
+            lines.append(self.active_plan_content)
+            lines.append("(This is the current state of the overall plan. Use this to understand your context and progress)")
+
         if self.dependency_findings:
-            lines.append("Dependency findings:")
+            lines.append("\nDependency findings:")
             for finding in self.dependency_findings:
                 lines.append(
                     f"- {finding.source_task_id} ({finding.agent_name}): {finding.summary}"
                 )
 
         if self.global_findings:
-            lines.append("Recent findings:")
+            lines.append("\nRecent findings:")
             for finding in self.global_findings:
                 lines.append(
                     f"- {finding.source_task_id} ({finding.agent_name}): {finding.summary}"
                 )
 
-        lines.append("Use shared findings to avoid repeating already completed exploration.")
+        lines.append("\nUse shared findings to avoid repeating already completed exploration.")
 
         text = "\n".join(lines)
         if len(text) <= max_chars:
@@ -94,6 +100,7 @@ class AgentContextStore:
         task_description: str,
         original_message: str,
         depends_on: list[str],
+        active_plan_content: str = "",
     ) -> ContextEnvelope:
         """Build envelope for the current task from dependency and recent findings."""
         dependency_findings = [
@@ -122,6 +129,7 @@ class AgentContextStore:
             original_message=original_message,
             dependency_findings=dependency_findings,
             global_findings=global_findings,
+            active_plan_content=active_plan_content,
         )
 
     def _summarize_result(self, result: str) -> str:
@@ -129,6 +137,15 @@ class AgentContextStore:
         text = (result or "").strip()
         if not text:
             return "(empty result)"
+
+        import re
+        match = re.search(r"<summary>\s*(.*?)\s*</summary>", text, re.IGNORECASE | re.DOTALL)
+        if match:
+            # Clean up newlines for compact storage
+            summary_content = " ".join(line.strip() for line in match.group(1).splitlines() if line.strip())
+            if len(summary_content) <= self._finding_max_chars:
+                return summary_content
+            return summary_content[: self._finding_max_chars] + " ..."
 
         lines = [line.strip() for line in text.splitlines() if line.strip()]
         signal_lines: list[str] = []
