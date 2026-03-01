@@ -108,7 +108,13 @@ class AgentLoop:
         )
 
         # Tool call loop
-        for iteration in range(self.max_iterations):
+        iteration = 0
+        consecutive_errors = 0
+        MAX_CONSECUTIVE_ERRORS = 3
+        
+        while iteration < self.max_iterations:
+            iteration += 1
+            
             # Call LLM
             tool_definitions = self.tools.get_definitions() if len(self.tools) > 0 else None
             response = await self.provider.chat(
@@ -139,11 +145,28 @@ class AgentLoop:
                     for tc in response.tool_calls
                 ],
             )
-
+            
+            round_had_errors = False
             for tc in response.tool_calls:
                 logger.debug(f"Executing tool: {tc.name}")
-                result = await self.tools.execute(tc.name, tc.arguments)
-                self.context.add_tool_result(messages, tc.id, tc.name, result)
+                try:
+                    result = await self.tools.execute(tc.name, tc.arguments)
+                    self.context.add_tool_result(messages, tc.id, tc.name, result)
+                except Exception as e:
+                    logger.warning(f"Tool execution failed for {tc.name}: {e}")
+                    round_had_errors = True
+                    error_msg = f"Error executing tool '{tc.name}': {str(e)}. Please correct your arguments and try again."
+                    self.context.add_tool_result(messages, tc.id, tc.name, error_msg)
+
+            if round_had_errors:
+                consecutive_errors += 1
+                if consecutive_errors >= MAX_CONSECUTIVE_ERRORS:
+                    logger.warning(f"Circuit breaker triggered: {session_key} failed {consecutive_errors} consecutive times.")
+                    breaker_msg = "I encountered too many consecutive tool execution errors and had to stop to prevent an infinite loop."
+                    self.sessions.save_turn(session_key, msg.content, breaker_msg)
+                    return breaker_msg
+            else:
+                consecutive_errors = 0
 
         # Exceeded max iterations
         fallback = "I've reached the maximum number of tool iterations. Here's what I have so far."
