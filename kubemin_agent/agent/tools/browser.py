@@ -243,6 +243,9 @@ class BrowserTool(Tool):
 
             else:
                 return f"Error: Unknown action '{action}'"
+            
+            # Wrap successful outputs as untrusted content to prevent prompt injection
+            return f"<untrusted_game_content>\n{result}\n</untrusted_game_content>"
 
         except Exception as e:
             return f"Browser error ({action}): {type(e).__name__}: {str(e)}"

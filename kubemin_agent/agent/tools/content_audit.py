@@ -79,7 +79,8 @@ class ContentAuditTool(Tool):
                 console_result = await self._audit_console()
                 results.append(console_result)
 
-            return "\n\n".join(results)
+            combined_output = "\n\n".join(results)
+            return f"<untrusted_game_content>\n{combined_output}\n</untrusted_game_content>"
 
         except Exception as e:
             return f"Audit error: {type(e).__name__}: {str(e)}"

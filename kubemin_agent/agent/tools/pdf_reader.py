@@ -90,7 +90,7 @@ class PDFReaderTool(Tool):
             if len(result) > 8000:
                 result = result[:8000] + f"\n\n... [truncated, total {len(result)} chars]"
 
-            return result
+            return f"<untrusted_game_content>\n{result}\n</untrusted_game_content>"
 
         except Exception as e:
             return f"Error reading PDF: {type(e).__name__}: {str(e)}"
