@@ -30,12 +30,8 @@ class MCPClient:
 
     @staticmethod
     def _detect_container() -> bool:
-        """Auto-detect if running inside a Docker / container environment."""
-        if os.environ.get("CONTAINER"):
-            return True
-        if Path("/.dockerenv").exists():
-            return True
-        return False
+        """Check if unsafe sandbox bypass is explicitly requested via environment variable."""
+        return os.environ.get("UNSAFE_ALLOW_NO_SANDBOX") == "1"
 
     async def start(self) -> None:
         """Start the Chrome DevTools MCP server subprocess."""

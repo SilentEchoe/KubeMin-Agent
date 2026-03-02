@@ -1,6 +1,8 @@
 """GameAuditAgent - Web game auditing specialist."""
 
 import os
+import tempfile
+import urllib.parse
 from pathlib import Path
 from typing import Any
 
@@ -39,10 +41,23 @@ class GameAuditAgent(BaseAgent):
         headless: bool = True,
         game_url: str | None = None,
     ) -> None:
-        self._workspace = workspace or Path.home() / ".kubemin-agent" / "workspace"
+        self._temp_dir = None
+        if workspace is None:
+            self._temp_dir = tempfile.TemporaryDirectory(prefix="game_audit_workspace_")
+            self._workspace = Path(self._temp_dir.name)
+        else:
+            self._workspace = workspace
         self._workspace.mkdir(parents=True, exist_ok=True)
+        
         self._mcp = MCPClient(headless=headless)
         self._game_url = game_url or os.environ.get("GAME_TEST_URL")
+        
+        # Determine allowed domain for whitelisting
+        self._allowed_domain = None
+        if self._game_url:
+            parsed = urllib.parse.urlparse(self._game_url)
+            self._allowed_domain = parsed.hostname
+
         self._test_plan: TestPlan | None = None
         self._final_report: AuditReportV1 | None = None
         super().__init__(provider, sessions, audit=audit, workspace=self._workspace)
@@ -208,7 +223,7 @@ class GameAuditAgent(BaseAgent):
     def _register_tools(self) -> None:
         """Register game testing specific tools."""
         self.tools.register(PDFReaderTool())
-        self.tools.register(BrowserTool(self._mcp))
+        self.tools.register(BrowserTool(self._mcp, allowed_domain=self._allowed_domain))
         self.tools.register(ScreenshotTool(self._mcp, self._workspace))
         self.tools.register(ContentAuditTool(self._mcp))
         self.tools.register(ReadFileTool(self._workspace))
@@ -234,5 +249,8 @@ class GameAuditAgent(BaseAgent):
             return f"[SUSPENDED] {str(e)} (Case ID: {e.case_id}, Screenshot: {e.screenshot_path})"
 
     async def cleanup(self) -> None:
-        """Clean up resources (stop MCP server)."""
+        """Clean up resources (stop MCP server and delete ephemeral workspace)."""
         await self._mcp.stop()
+        if self._temp_dir is not None:
+            self._temp_dir.cleanup()
+            self._temp_dir = None

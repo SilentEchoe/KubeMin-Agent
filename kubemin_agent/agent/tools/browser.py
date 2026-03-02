@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any
+from urllib.parse import urlparse
 
 from kubemin_agent.agent.tools.base import Tool
 from kubemin_agent.agent.tools.mcp_client import MCPClient
@@ -20,8 +22,9 @@ class BrowserTool(Tool):
     console logs, and network requests.
     """
 
-    def __init__(self, mcp: MCPClient) -> None:
+    def __init__(self, mcp: MCPClient, allowed_domain: str | None = None) -> None:
         self._mcp = mcp
+        self._allowed_domain = allowed_domain
         self._summarizer = ToolResultSummarizer(max_output_chars=MAX_CONTENT_LENGTH)
 
     @property
@@ -107,6 +110,15 @@ class BrowserTool(Tool):
                 url = kwargs.get("url", "")
                 if not url:
                     return "Error: 'url' is required for navigate action"
+                
+                # Check domain whitelist if configured
+                if self._allowed_domain:
+                    parsed = urlparse(url)
+                    target_domain = parsed.hostname or ""
+                    # Check if target domain equals or is a subdomain of the allowed domain
+                    if target_domain != self._allowed_domain and not target_domain.endswith(f".{self._allowed_domain}"):
+                        return f"Error: Navigation to '{target_domain}' blocked by domain whitelist policy (allowed: {self._allowed_domain})."
+
                 return await self._mcp.call_tool("navigate_page", {"url": url})
 
             elif action == "click":
@@ -153,6 +165,13 @@ class BrowserTool(Tool):
                 value = kwargs.get("value", "")
                 if not value:
                     return "Error: 'value' (JavaScript code) is required."
+                
+                # Strict Regex blocks for malicious network exfiltration strings
+                forbidden_patterns = [r"\bfetch\s*\(", r"\bXMLHttpRequest\b", r"\bWebSocket\b", r"\bsetTimeout\b", r"\bsetInterval\b"]
+                for pattern in forbidden_patterns:
+                    if re.search(pattern, value):
+                        return f"Error: Security policy violation. The keyword/pattern '{pattern}' is blocked in evaluate."
+
                 result = await self._mcp.call_tool("evaluate_script", {"function": value})
                 return self._summarizer.summarize(
                     result,
