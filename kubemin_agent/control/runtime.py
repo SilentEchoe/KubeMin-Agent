@@ -10,6 +10,7 @@ from loguru import logger
 
 from kubemin_agent.agents.general_agent import GeneralAgent
 from kubemin_agent.agents.k8s_agent import K8sAgent
+from kubemin_agent.agents.patrol_agent import PatrolAgent
 from kubemin_agent.agents.workflow_agent import WorkflowAgent
 from kubemin_agent.bus.events import OutboundMessage
 from kubemin_agent.bus.queue import MessageBus
@@ -135,6 +136,9 @@ class ControlPlaneRuntime:
         )
         self.registry.register(
             WorkflowAgent(self.provider, self.sessions, **agent_kwargs)
+        )
+        self.registry.register(
+            PatrolAgent(self.provider, self.sessions, **agent_kwargs)
         )
 
     async def handle_message(
