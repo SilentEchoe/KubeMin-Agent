@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from kubemin_agent.agents.patrol_agent import PatrolAgent
+from kubemin_agent.config.schema import PatrolConfig
 from kubemin_agent.providers.base import LLMProvider, LLMResponse
 from kubemin_agent.session.manager import SessionManager
 
@@ -29,6 +30,20 @@ def patrol_agent(tmp_path: Path) -> PatrolAgent:
     return PatrolAgent(provider=StubProvider(), sessions=sessions, workspace=workspace)
 
 
+@pytest.fixture
+def patrol_agent_with_kubemin(tmp_path: Path) -> PatrolAgent:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    sessions = SessionManager(workspace)
+    return PatrolAgent(
+        provider=StubProvider(),
+        sessions=sessions,
+        workspace=workspace,
+        kubemin_api_base="http://kubemin.local:8080",
+        kubemin_namespace="prod",
+    )
+
+
 class TestPatrolAgentProperties:
     """Test basic agent properties."""
 
@@ -41,9 +56,12 @@ class TestPatrolAgentProperties:
     def test_description_mentions_events(self, patrol_agent: PatrolAgent) -> None:
         assert "event" in patrol_agent.description.lower()
 
+    def test_description_mentions_kubemin_cli(self, patrol_agent: PatrolAgent) -> None:
+        assert "kubemin-cli" in patrol_agent.description.lower()
+
     def test_allowed_tools(self, patrol_agent: PatrolAgent) -> None:
         assert set(patrol_agent.allowed_tools) == {
-            "kubectl", "run_command", "read_file", "write_file",
+            "kubectl", "run_command", "read_file", "write_file", "kubemin_cli",
         }
 
 
@@ -59,6 +77,9 @@ class TestPatrolAgentTools:
 
     def test_write_file_tool_registered(self, patrol_agent: PatrolAgent) -> None:
         assert "write_file" in patrol_agent.tools.tool_names
+
+    def test_kubemin_cli_tool_registered(self, patrol_agent: PatrolAgent) -> None:
+        assert "kubemin_cli" in patrol_agent.tools.tool_names
 
 
 class TestPatrolAgentSkills:
@@ -87,3 +108,31 @@ class TestPatrolAgentSkills:
     def test_system_prompt_contains_health_score(self, patrol_agent: PatrolAgent) -> None:
         prompt = patrol_agent.system_prompt
         assert "健康评分" in prompt
+
+    def test_system_prompt_contains_kubemin_platform_strategy(self, patrol_agent: PatrolAgent) -> None:
+        prompt = patrol_agent.system_prompt
+        assert "kubemin-cli" in prompt.lower() or "kubemin_cli" in prompt.lower()
+
+    def test_system_prompt_mentions_kubemin_cli_tool(self, patrol_agent: PatrolAgent) -> None:
+        prompt = patrol_agent.system_prompt
+        assert "kubemin_cli" in prompt
+
+
+class TestPatrolConfig:
+    """Test PatrolConfig defaults."""
+
+    def test_default_disabled(self) -> None:
+        config = PatrolConfig()
+        assert config.enabled is False
+
+    def test_default_schedule(self) -> None:
+        config = PatrolConfig()
+        assert config.schedule == "0 9 * * *"
+
+    def test_default_channel(self) -> None:
+        config = PatrolConfig()
+        assert config.channel == "patrol"
+
+    def test_default_message_not_empty(self) -> None:
+        config = PatrolConfig()
+        assert len(config.message) > 0

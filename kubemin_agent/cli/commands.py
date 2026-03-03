@@ -181,7 +181,7 @@ def gateway(
     from kubemin_agent.channels.telegram import TelegramChannel
     from kubemin_agent.control.runtime import ControlPlaneRuntime
     from kubemin_agent.cron.service import CronService
-    from kubemin_agent.cron.types import CronJob
+    from kubemin_agent.cron.types import CronJob, ScheduleType
     from kubemin_agent.heartbeat.service import HeartbeatService
     from kubemin_agent.providers.litellm_provider import LiteLLMProvider
 
@@ -238,7 +238,23 @@ def gateway(
             )
             channel_manager.register(feishu_channel)
 
-        # 5. Initialization complete, starting control plane looped:
+        # 5. Auto-register patrol cron job if enabled
+        if config.patrol.enabled:
+            existing = [j for j in cron_service.list_jobs() if j.name == "patrol-daily"]
+            if not existing:
+                cron_service.add_job(
+                    name="patrol-daily",
+                    message=config.patrol.message,
+                    schedule_type=ScheduleType.CRON,
+                    schedule_value=config.patrol.schedule,
+                    channel=config.patrol.channel,
+                    chat_id=config.patrol.chat_id,
+                )
+                console.print(
+                    f"[green]Patrol scheduled:[/green] {config.patrol.schedule}"
+                )
+
+        # 6. Initialization complete, starting control plane loop:
         if config.control.enabled:
             runtime = ControlPlaneRuntime.from_config(config, provider, workspace)
             tasks = [
@@ -287,6 +303,49 @@ def gateway(
             await channel_manager.stop_all()
 
     asyncio.run(_run_gateway())
+
+
+@app.command()
+def patrol(
+    config_path: Optional[Path] = typer.Option(None, "--config", "-c", help="Config file path"),
+    schedule: bool = typer.Option(False, "--schedule", "-s", help="Show patrol schedule status"),
+) -> None:
+    """Run a one-shot patrol or show patrol schedule status."""
+    config = load_config(config_path)
+    workspace = ensure_workspace(config)
+
+    if schedule:
+        table = Table(title="Patrol Schedule")
+        table.add_column("Setting", style="cyan")
+        table.add_column("Value", style="green")
+        table.add_row("Enabled", str(config.patrol.enabled))
+        table.add_row("Schedule", config.patrol.schedule)
+        table.add_row("Channel", config.patrol.channel)
+        table.add_row("Chat ID", config.patrol.chat_id)
+        console.print(table)
+        return
+
+    api_key = config.get_api_key()
+    if not api_key:
+        console.print("[red]Error:[/red] No API key configured. Run 'kubemin-agent onboard' first.")
+        raise typer.Exit(1)
+
+    from kubemin_agent.control.runtime import ControlPlaneRuntime
+    from kubemin_agent.providers.litellm_provider import LiteLLMProvider
+
+    provider = LiteLLMProvider(
+        api_key=api_key,
+        api_base=config.get_api_base(),
+        default_model=config.agents.defaults.model,
+    )
+    runtime = ControlPlaneRuntime.from_config(config, provider, workspace)
+
+    console.print("[bold green]Starting patrol...[/bold green]")
+    response = asyncio.run(
+        runtime.handle_message("patrol", "system", config.patrol.message)
+    )
+    console.print(f"\n{response}\n")
+    console.print("[bold green]Patrol complete.[/bold green]")
 
 
 @app.command()

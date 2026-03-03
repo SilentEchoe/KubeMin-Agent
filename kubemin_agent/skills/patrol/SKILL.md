@@ -119,6 +119,39 @@ always: true
 - 每个 Deployment 副本不足 -5 分
 - 最低 0 分
 
+### STRATEGY 4 — KubeMin 平台巡检
+
+使用 `kubemin_cli` 工具查询平台级资源，评估 KubeMin-Cli 框架自身的健康状态。
+
+1. **平台健康检查**
+   - 执行 `kubemin-cli health` 获取平台整体健康状态
+   - 执行 `kubemin-cli version` 确认平台版本信息
+
+2. **应用状态巡检**
+   - 执行 `kubemin-cli get apps` 查看所有应用列表
+   - 执行 `kubemin-cli describe app <name>` 获取异常应用详情
+   - 关注部署失败、实例不健康的应用
+
+3. **工作流执行检查**
+   - 执行 `kubemin-cli list workflows` 查看工作流列表
+   - 执行 `kubemin-cli list workflows --status failed` 过滤失败的工作流
+   - 对失败工作流执行 `kubemin-cli describe workflow <name>` 分析原因
+
+4. **平台服务状态**
+   - 执行 `kubemin-cli status` 查看各平台服务组件状态
+   - 关注 API Server、Controller、Scheduler 等核心组件
+
+5. **配置漂移检测**
+   - 执行 `kubemin-cli get configs` 检查平台配置
+   - 执行 `kubemin-cli describe config <name>` 查看配置详情
+   - 对比预期配置与实际配置是否一致
+
+将平台级发现纳入报告的 **平台状态** 章节，评分规则：
+- 平台健康检查不通过 -20 分
+- 每个失败工作流 -5 分
+- 每个异常应用 -8 分
+- 核心组件不可用 -15 分
+
 ## 安全约束
 
 - **只读操作**：仅使用 get / describe / logs 命令，严禁任何变更操作

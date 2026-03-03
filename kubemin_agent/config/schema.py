@@ -140,6 +140,20 @@ class ValidatorConfig(BaseModel):
     policy_level: str = "standard"
 
 
+class PatrolConfig(BaseModel):
+    """Patrol agent autonomous scheduling configuration."""
+
+    enabled: bool = False
+    schedule: str = "0 9 * * *"
+    channel: str = "patrol"
+    chat_id: str = "system"
+    message: str = (
+        "执行每日平台巡检：检查所有节点、Pod、Deployment 状态，"
+        "分析 Kubernetes 事件，查询 KubeMin 平台健康状态，"
+        "生成巡检报告并写入 workspace。"
+    )
+
+
 class Config(BaseSettings):
     """Root configuration for kubemin-agent."""
 
@@ -152,6 +166,7 @@ class Config(BaseSettings):
     control: ControlConfig = Field(default_factory=ControlConfig)
     evaluation: EvaluationConfig = Field(default_factory=EvaluationConfig)
     validator: ValidatorConfig = Field(default_factory=ValidatorConfig)
+    patrol: PatrolConfig = Field(default_factory=PatrolConfig)
 
     @property
     def workspace_path(self) -> Path:

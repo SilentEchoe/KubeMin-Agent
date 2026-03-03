@@ -46,6 +46,8 @@ class ControlPlaneRuntime:
         max_trace_steps: int = 50,
         max_parallelism: int = 4,
         fail_fast: bool = False,
+        kubemin_api_base: str = "",
+        kubemin_namespace: str = "",
     ) -> None:
         self.provider = provider
         self.workspace = workspace
@@ -83,6 +85,8 @@ class ControlPlaneRuntime:
             max_parallelism=max_parallelism,
             fail_fast=fail_fast,
         )
+        self.kubemin_api_base = kubemin_api_base
+        self.kubemin_namespace = kubemin_namespace
 
         self._running = False
         self._register_default_agents()
@@ -113,6 +117,8 @@ class ControlPlaneRuntime:
             max_trace_steps=config.evaluation.max_trace_steps,
             max_parallelism=config.control.max_parallelism,
             fail_fast=config.control.fail_fast,
+            kubemin_api_base=config.kubemin.api_base,
+            kubemin_namespace=config.kubemin.default_namespace,
         )
 
     def _register_default_agents(self) -> None:
@@ -138,7 +144,13 @@ class ControlPlaneRuntime:
             WorkflowAgent(self.provider, self.sessions, **agent_kwargs)
         )
         self.registry.register(
-            PatrolAgent(self.provider, self.sessions, **agent_kwargs)
+            PatrolAgent(
+                self.provider,
+                self.sessions,
+                kubemin_api_base=self.kubemin_api_base,
+                kubemin_namespace=self.kubemin_namespace,
+                **agent_kwargs,
+            )
         )
 
     async def handle_message(
