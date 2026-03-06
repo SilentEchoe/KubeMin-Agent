@@ -67,20 +67,8 @@ def agent(
             console.print(response)
             return
 
-        console.print("[bold]KubeMin-Agent[/bold] control-plane interactive mode.")
-        console.print("Type 'exit' to quit. Use '/plan <task>' to create a plan, and '/execute' to run it.\n")
-        while True:
-            try:
-                user_input = console.input("[bold blue]> [/bold blue]")
-                if user_input.strip().lower() in ("exit", "quit"):
-                    break
-                if not user_input.strip():
-                    continue
-                response = asyncio.run(runtime.handle_message("cli", "interactive", user_input))
-                console.print(f"\n{response}\n")
-            except (KeyboardInterrupt, EOFError):
-                break
-        console.print("\n[dim]Goodbye![/dim]")
+        from kubemin_agent.cli.ui import run_interactive_ui
+        asyncio.run(run_interactive_ui(runtime, workspace, console))
         return
 
     # Backward-compatibility path: legacy AgentLoop mode.
@@ -101,7 +89,11 @@ def agent(
         response = asyncio.run(loop.process_direct(message))
         console.print(response)
     else:
+        # Provide minimal stub since runtime logic relies on ControlPlaneRuntime structure.
+        # But we can update the prompt loop if needed or just leave a message 
+        # that interactive mode requires control plane for the Claude style.
         console.print("[bold]KubeMin-Agent[/bold] legacy interactive mode. Type 'exit' to quit.\n")
+        console.print("[yellow]For the new advanced Claude Code UI, enable the control plane in your config![/yellow]\n")
         while True:
             try:
                 user_input = console.input("[bold blue]> [/bold blue]")
