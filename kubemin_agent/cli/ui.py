@@ -22,10 +22,13 @@ from kubemin_agent.agent.skills import SkillsLoader
 def get_prompt_style() -> Style:
     """Codex/Claude Code like theme."""
     return Style.from_dict({
-        "prompt": "ansidarkgray bold",
-        "completion-menu": "bg:ansiblack ansigray",
-        "completion-menu.completion": "bg:ansiblack ansigray",
-        "completion-menu.completion.current": "bg:ansidarkgray ansiwhite",
+        "prompt": "fg:ansidarkgray bold",
+        "text": "fg:ansiwhite", 
+        "completion-menu": "bg:default",
+        "completion-menu.completion": "fg:ansiwhite bg:default",
+        "completion-menu.meta.completion": "fg:ansigray bg:default",
+        "completion-menu.completion.current": "fg:#66d9ef bg:default bold",
+        "completion-menu.meta.completion.current": "fg:#66d9ef bg:default bold",
     })
 
 
@@ -165,7 +168,4 @@ async def run_interactive_ui(runtime: "ControlPlaneRuntime", workspace: Path, co
             break
         except Exception as e:
             console.print(f"[bold red]意外的界面错误:[/bold red] {e}")
-
-    console.print("\n[dim]再见！[/dim]")
-
     console.print("\n[dim]再见！[/dim]")
