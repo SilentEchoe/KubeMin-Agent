@@ -8,6 +8,7 @@ from pathlib import Path
 
 from loguru import logger
 
+from kubemin_agent.agents.game_audit_agent import GameAuditAgent
 from kubemin_agent.agents.general_agent import GeneralAgent
 from kubemin_agent.agents.guide_agent import GuideAgent
 from kubemin_agent.agents.k8s_agent import K8sAgent
@@ -161,6 +162,15 @@ class ControlPlaneRuntime:
         )
         self.registry.register(
             GuideAgent(self.provider, self.sessions, **agent_kwargs)
+        )
+        self.registry.register(
+            GameAuditAgent(
+                self.provider,
+                self.sessions,
+                audit=self.audit,
+                workspace=self.workspace,
+                headless=True,
+            )
         )
 
         # --- Orchestrator setup (progressive context mode) ---
