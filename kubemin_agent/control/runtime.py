@@ -9,6 +9,7 @@ from pathlib import Path
 from loguru import logger
 
 from kubemin_agent.agents.general_agent import GeneralAgent
+from kubemin_agent.agents.guide_agent import GuideAgent
 from kubemin_agent.agents.k8s_agent import K8sAgent
 from kubemin_agent.agents.orchestrator_agent import OrchestratorAgent
 from kubemin_agent.agents.patrol_agent import PatrolAgent
@@ -157,6 +158,9 @@ class ControlPlaneRuntime:
                 kubemin_namespace=self.kubemin_namespace,
                 **agent_kwargs,
             )
+        )
+        self.registry.register(
+            GuideAgent(self.provider, self.sessions, **agent_kwargs)
         )
 
         # --- Orchestrator setup (progressive context mode) ---
