@@ -24,11 +24,11 @@ def get_prompt_style() -> Style:
     return Style.from_dict({
         "prompt": "fg:ansidarkgray bold",
         "text": "fg:ansiwhite", 
-        "completion-menu": "bg:transparent",
-        "completion-menu.completion": "fg:ansiwhite bg:transparent",
-        "completion-menu.meta.completion": "fg:ansigray bg:transparent",
-        "completion-menu.completion.current": "fg:#66d9ef bg:transparent bold",
-        "completion-menu.meta.completion.current": "fg:#66d9ef bg:transparent bold",
+        "completion-menu": "bg:default",
+        "completion-menu.completion": "fg:ansiwhite bg:default",
+        "completion-menu.meta.completion": "fg:ansigray bg:default",
+        "completion-menu.completion.current": "fg:#66d9ef bg:default bold",
+        "completion-menu.meta.completion.current": "fg:#66d9ef bg:default bold",
     })
 
 
