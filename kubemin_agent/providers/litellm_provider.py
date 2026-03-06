@@ -21,8 +21,9 @@ class LiteLLMProvider(LLMProvider):
         api_key: str | None = None,
         api_base: str | None = None,
         default_model: str = "anthropic/claude-sonnet-4-20250514",
+        default_temperature: float = 0.7,
     ):
-        super().__init__(api_key, api_base)
+        super().__init__(api_key, api_base, default_temperature)
         self._default_model = default_model
 
     async def chat(
@@ -31,7 +32,7 @@ class LiteLLMProvider(LLMProvider):
         tools: list[dict[str, Any]] | None = None,
         model: str | None = None,
         max_tokens: int = 4096,
-        temperature: float = 0.7,
+        temperature: float | None = None,
     ) -> LLMResponse:
         """Send a chat completion request via LiteLLM."""
         try:
@@ -40,12 +41,13 @@ class LiteLLMProvider(LLMProvider):
             raise RuntimeError("litellm is required. Install with: pip install litellm")
 
         use_model = model or self._default_model
+        use_temperature = temperature if temperature is not None else self.default_temperature
 
         kwargs: dict[str, Any] = {
             "model": use_model,
             "messages": messages,
             "max_tokens": max_tokens,
-            "temperature": temperature,
+            "temperature": use_temperature,
         }
 
         if self.api_key:

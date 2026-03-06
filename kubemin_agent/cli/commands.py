@@ -56,6 +56,7 @@ def agent(
         api_key=api_key,
         api_base=config.get_api_base(),
         default_model=config.agents.defaults.model,
+        default_temperature=config.agents.defaults.temperature,
     )
 
     if config.control.enabled:
@@ -190,6 +191,7 @@ def gateway(
             api_key=api_key,
             api_base=config.get_api_base(),
             default_model=config.agents.defaults.model,
+            default_temperature=config.agents.defaults.temperature,
         )
         bus = MessageBus()
         channel_manager = ChannelManager(bus)
@@ -337,6 +339,7 @@ def patrol(
         api_key=api_key,
         api_base=config.get_api_base(),
         default_model=config.agents.defaults.model,
+        default_temperature=config.agents.defaults.temperature,
     )
     runtime = ControlPlaneRuntime.from_config(config, provider, workspace)
 

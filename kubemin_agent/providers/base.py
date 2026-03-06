@@ -37,9 +37,10 @@ class LLMProvider(ABC):
     while maintaining a consistent interface.
     """
 
-    def __init__(self, api_key: str | None = None, api_base: str | None = None):
+    def __init__(self, api_key: str | None = None, api_base: str | None = None, default_temperature: float = 0.7):
         self.api_key = api_key
         self.api_base = api_base
+        self.default_temperature = default_temperature
 
     @abstractmethod
     async def chat(
@@ -48,7 +49,7 @@ class LLMProvider(ABC):
         tools: list[dict[str, Any]] | None = None,
         model: str | None = None,
         max_tokens: int = 4096,
-        temperature: float = 0.7,
+        temperature: float | None = None,
     ) -> LLMResponse:
         """
         Send a chat completion request.

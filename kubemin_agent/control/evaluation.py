@@ -268,7 +268,6 @@ class HybridEvaluator(ExecutionEvaluator):
                     {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},
                 ],
                 max_tokens=256,
-                temperature=0.0,
             )
             if not response.content:
                 return {}, []
