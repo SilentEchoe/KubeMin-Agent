@@ -14,26 +14,29 @@ from prompt_toolkit.styles import Style
 from pygments.lexers.shell import BashLexer
 from rich.console import Console
 from rich.markdown import Markdown
-from rich.panel import Panel
 
 from kubemin_agent.agent.skills import SkillsLoader
 
 
 def get_prompt_style() -> Style:
     """Codex/Claude Code like theme."""
+    # From the Codex screenshot: 
+    # The selected command uses a bright cyan background (#00d7ff or similar) and black text.
+    # The non-selected command uses bold white/cyan text and no background.
+    # The description text is dim/gray.
     return Style.from_dict({
-        "prompt": "fg:ansidarkgray bold",
+        "prompt": "fg:ansicyan bold",
         "text": "fg:ansiwhite", 
         "completion-menu": "bg:default",
         "completion-menu.completion": "fg:ansiwhite bg:default",
         "completion-menu.meta.completion": "fg:ansigray bg:default",
-        "completion-menu.completion.current": "fg:#66d9ef bg:default bold",
-        "completion-menu.meta.completion.current": "fg:#66d9ef bg:default bold",
+        "completion-menu.completion.current": "fg:ansiblack bg:ansicyan bold",
+        "completion-menu.meta.completion.current": "fg:ansiblack bg:ansicyan",
     })
 
 
-def create_startup_panel(runtime: "ControlPlaneRuntime", workspace: Path) -> Panel:
-    """Create the Codex-style startup panel."""
+def create_startup_panel(runtime: "ControlPlaneRuntime", workspace: Path) -> str:
+    """Create the Codex-style startup banner."""
     # Assuming version is available via importlib or hardcoded for now
     version = "0.1.0"
     model_name = getattr(runtime, "model", "Unknown Model")
@@ -44,18 +47,11 @@ def create_startup_panel(runtime: "ControlPlaneRuntime", workspace: Path) -> Pan
     if cwd.startswith(home):
         cwd = "~" + cwd[len(home):]
 
-    content = (
-        f"model:     [bold]{model_name}[/bold]      [cyan]/model[/cyan] to change\n"
-        f"directory: [bold]{cwd}[/bold]"
-    )
-
-    return Panel(
-        content,
-        title=f"[bold]>_ KubeMin-Agent[/bold] (v{version})",
-        title_align="left",
-        border_style="dim",
-        padding=(1, 2),
-        expand=False,
+    return (
+        f"[bold]KubeMin-Agent[/bold] (v{version})\n"
+        f"  [dim]Model[/dim]    {model_name}\n"
+        f"  [dim]Project[/dim]  {cwd}\n"
+        f"  [dim]Type [cyan]/help[/cyan] for available commands.[/dim]"
     )
 
 
@@ -85,16 +81,17 @@ async def run_interactive_ui(runtime: "ControlPlaneRuntime", workspace: Path, co
         lexer=PygmentsLexer(BashLexer),
     )
 
-    # Display startup panel
+    # Display startup banner
     console.print()
     console.print(create_startup_panel(runtime, workspace))
-    console.print("\n[bold]Tip:[/bold] 欢迎使用 KubeMin-Agent。输入 [bold cyan]/help[/bold cyan] 查看可用命令；按 [bold cyan]Enter[/bold cyan] 确认发送。\n")
 
     # Display initial skills explicitly as requested before
     skills_loader = SkillsLoader(workspace)
     skills = skills_loader.skill_names
     if skills:
-         console.print(f"[dim]已加载技能 (Skills): {', '.join(skills)}[/dim]\n")
+         console.print(f"  [dim]Skills[/dim]   {', '.join(skills)}\n")
+    else:
+         console.print()
 
     while True:
         try:
