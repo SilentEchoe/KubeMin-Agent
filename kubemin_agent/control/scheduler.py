@@ -90,8 +90,11 @@ class Scheduler:
     """
     Core scheduler for the control plane.
 
-    Analyzes user intent via LLM, selects the appropriate sub-agent,
-    dispatches tasks, validates results, and records audit logs.
+    Supports two orchestration modes:
+    - ``orchestrated``: A single OrchestratorAgent with all tools + delegate
+      tools decides autonomously how to fulfil the request (progressive context).
+    - ``intent_dispatch``: Legacy mode — LLM classifies intent first, then
+      dispatches to hardcoded sub-agents.
     """
 
     def __init__(
@@ -106,6 +109,7 @@ class Scheduler:
         max_trace_steps: int = 50,
         max_parallelism: int = 4,
         fail_fast: bool = False,
+        orchestration_mode: str = "orchestrated",
     ) -> None:
         self.provider = provider
         self.registry = registry
@@ -117,6 +121,12 @@ class Scheduler:
         self.max_trace_steps = max(1, max_trace_steps)
         self.max_parallelism = max(1, max_parallelism)
         self.fail_fast = fail_fast
+        self.orchestration_mode = orchestration_mode
+        self._orchestrator: Any | None = None
+
+    def set_orchestrator(self, agent: Any) -> None:
+        """Set the orchestrator agent for orchestrated mode."""
+        self._orchestrator = agent
 
     async def dispatch(
         self,
@@ -126,7 +136,7 @@ class Scheduler:
         plan_mode: bool = False,
     ) -> str:
         """
-        Full dispatch flow: intent analysis -> select agent -> execute -> validate -> return.
+        Main entry point: routes to orchestrated or intent_dispatch mode.
 
         Args:
             message: The user's message.
@@ -136,6 +146,129 @@ class Scheduler:
 
         Returns:
             The final response to send back to the user or the formatted plan.
+        """
+        if self.orchestration_mode == "orchestrated" and self._orchestrator and not plan_mode:
+            return await self.dispatch_orchestrated(message, session_key, request_id)
+
+        # Legacy intent_dispatch path (also used for plan_mode)
+        return await self._dispatch_intent(message, session_key, request_id, plan_mode)
+
+    async def dispatch_orchestrated(
+        self,
+        message: str,
+        session_key: str,
+        request_id: str | None = None,
+    ) -> str:
+        """
+        Orchestrated dispatch: let the OrchestratorAgent handle everything.
+
+        No intent classification — the LLM autonomously decides which tools
+        or delegate agents to use.
+        """
+        dispatch_id = request_id or uuid.uuid4().hex[:12]
+
+        self.audit.log_dispatch(
+            session_key=session_key,
+            message=message,
+            agent_name="orchestrator",
+            task_description=message,
+            task_id="orchestrated",
+            request_id=dispatch_id,
+        )
+
+        start_time = time.monotonic()
+        self._prepare_agent_trace(agent=self._orchestrator, task_id="orchestrated")
+
+        try:
+            result = await self._orchestrator.run(
+                message,
+                session_key,
+                request_id=dispatch_id,
+            )
+            duration_ms = (time.monotonic() - start_time) * 1000
+            self.audit.log_execution(
+                session_key=session_key,
+                agent_name="orchestrator",
+                result_preview=result,
+                duration_ms=duration_ms,
+                task_id="orchestrated",
+                success=True,
+                request_id=dispatch_id,
+            )
+        except Exception as e:  # noqa: BLE001
+            duration_ms = (time.monotonic() - start_time) * 1000
+            result = f"Error from orchestrator: {e}"
+            self.audit.log_execution(
+                session_key=session_key,
+                agent_name="orchestrator",
+                result_preview=result,
+                duration_ms=duration_ms,
+                task_id="orchestrated",
+                success=False,
+                request_id=dispatch_id,
+            )
+            logger.error(f"Orchestrator execution failed: {e}")
+
+        trace_events = self._consume_agent_trace(self._orchestrator)
+
+        validation = await self.validator.validate(
+            agent_name="orchestrator",
+            result=result,
+            context={"session_key": session_key, "request_id": dispatch_id},
+        )
+
+        sanitized = validation.sanitized_result or result
+        self.audit.log_validation(
+            session_key=session_key,
+            agent_name="orchestrator",
+            passed=validation.passed,
+            task_id="orchestrated",
+            reason=validation.reason,
+            request_id=dispatch_id,
+            severity=validation.severity,
+            policy_id=validation.policy_id,
+            redactions=validation.redactions,
+        )
+
+        if self.evaluator:
+            try:
+                evaluation = await self.evaluator.evaluate(
+                    agent_name="orchestrator",
+                    task_description=message,
+                    final_output=sanitized,
+                    trace_events=trace_events,
+                    validation=validation,
+                )
+                self.audit.log_evaluation(
+                    session_key=session_key,
+                    agent_name="orchestrator",
+                    task_id="orchestrated",
+                    overall_score=evaluation.overall_score,
+                    dimension_scores=evaluation.dimension_scores,
+                    passed=evaluation.passed,
+                    warn_threshold=evaluation.warn_threshold,
+                    reasons=evaluation.reasons,
+                    suggestions=evaluation.suggestions,
+                    request_id=dispatch_id,
+                )
+            except Exception as e:  # noqa: BLE001
+                logger.warning(f"Orchestrator evaluation failed: {e}")
+
+        if not validation.passed and validation.severity == "block":
+            sanitized = f"[Validation Blocked] {validation.reason}\n\n{sanitized}"
+
+        self.sessions.save_turn(session_key, message, sanitized)
+        return sanitized
+
+    async def _dispatch_intent(
+        self,
+        message: str,
+        session_key: str,
+        request_id: str | None = None,
+        plan_mode: bool = False,
+    ) -> str:
+        """
+        Legacy intent-dispatch flow: analyze intent -> select agent -> execute.
         """
         dispatch_id = request_id or uuid.uuid4().hex[:12]
 

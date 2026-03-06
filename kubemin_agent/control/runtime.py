@@ -10,8 +10,10 @@ from loguru import logger
 
 from kubemin_agent.agents.general_agent import GeneralAgent
 from kubemin_agent.agents.k8s_agent import K8sAgent
+from kubemin_agent.agents.orchestrator_agent import OrchestratorAgent
 from kubemin_agent.agents.patrol_agent import PatrolAgent
 from kubemin_agent.agents.workflow_agent import WorkflowAgent
+from kubemin_agent.agent.tools.delegate import create_delegate_tools
 from kubemin_agent.bus.events import OutboundMessage
 from kubemin_agent.bus.queue import MessageBus
 from kubemin_agent.config.schema import Config
@@ -48,6 +50,7 @@ class ControlPlaneRuntime:
         fail_fast: bool = False,
         kubemin_api_base: str = "",
         kubemin_namespace: str = "",
+        orchestration_mode: str = "orchestrated",
     ) -> None:
         self.provider = provider
         self.workspace = workspace
@@ -73,6 +76,7 @@ class ControlPlaneRuntime:
             else None
         )
         self.registry = AgentRegistry()
+        self.orchestration_mode = orchestration_mode
         self.scheduler = Scheduler(
             provider=provider,
             registry=self.registry,
@@ -84,6 +88,7 @@ class ControlPlaneRuntime:
             max_trace_steps=max_trace_steps,
             max_parallelism=max_parallelism,
             fail_fast=fail_fast,
+            orchestration_mode=orchestration_mode,
         )
         self.kubemin_api_base = kubemin_api_base
         self.kubemin_namespace = kubemin_namespace
@@ -119,6 +124,7 @@ class ControlPlaneRuntime:
             fail_fast=config.control.fail_fast,
             kubemin_api_base=config.kubemin.api_base,
             kubemin_namespace=config.kubemin.default_namespace,
+            orchestration_mode=config.control.orchestration_mode,
         )
 
     def _register_default_agents(self) -> None:
@@ -152,6 +158,21 @@ class ControlPlaneRuntime:
                 **agent_kwargs,
             )
         )
+
+        # --- Orchestrator setup (progressive context mode) ---
+        if self.orchestration_mode == "orchestrated":
+            delegate_tools = create_delegate_tools(
+                registry=self.registry,
+                exclude={"orchestrator"},
+            )
+            orchestrator = OrchestratorAgent(
+                provider=self.provider,
+                sessions=self.sessions,
+                delegate_tools=delegate_tools,
+                **agent_kwargs,
+            )
+            self.registry.register(orchestrator)
+            self.scheduler.set_orchestrator(orchestrator)
 
     async def handle_message(
         self,

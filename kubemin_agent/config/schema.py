@@ -121,6 +121,7 @@ class ControlConfig(BaseModel):
     fallback_mode: str = "agent_loop"
     max_parallelism: int = 4
     fail_fast: bool = False
+    orchestration_mode: str = "orchestrated"  # "orchestrated" | "intent_dispatch"
 
 
 class EvaluationConfig(BaseModel):

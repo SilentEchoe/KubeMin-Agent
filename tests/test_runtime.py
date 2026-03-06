@@ -30,7 +30,9 @@ async def test_runtime_registers_default_agents_and_handles_message(tmp_path: Pa
     workspace.mkdir(parents=True, exist_ok=True)
 
     runtime = ControlPlaneRuntime(provider=RoutingProvider(), workspace=workspace)
-    assert set(runtime.registry.agent_names) == {"general", "k8s", "workflow", "patrol"}
+    assert {"general", "k8s", "workflow", "patrol"}.issubset(set(runtime.registry.agent_names))
+    # Orchestrated mode also registers the orchestrator agent
+    assert "orchestrator" in runtime.registry.agent_names
     assert runtime.scheduler.evaluator is not None
 
     result = await runtime.handle_message(channel="cli", chat_id="test", content="hello")
