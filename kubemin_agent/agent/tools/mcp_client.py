@@ -19,9 +19,10 @@ class MCPClient:
     and communicates via JSON-RPC over stdin/stdout.
     """
 
-    def __init__(self, headless: bool = True, no_sandbox: bool | None = None) -> None:
+    def __init__(self, headless: bool = True, no_sandbox: bool | None = None, step_delay: float = 0.0) -> None:
         self._headless = headless
         self._no_sandbox = no_sandbox if no_sandbox is not None else self._detect_container()
+        self._step_delay = max(0.0, step_delay)
         self._process: asyncio.subprocess.Process | None = None
         self._request_id = 0
         self._pending: dict[int, asyncio.Future] = {}
@@ -92,6 +93,10 @@ class MCPClient:
         """
         if not self._initialized:
             await self.start()
+
+        # Observable mode: pause before each operation so humans can follow along
+        if self._step_delay > 0:
+            await asyncio.sleep(self._step_delay)
 
         result = await self._send_request("tools/call", {
             "name": name,

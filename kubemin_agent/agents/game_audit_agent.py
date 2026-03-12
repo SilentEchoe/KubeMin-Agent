@@ -40,6 +40,7 @@ class GameAuditAgent(BaseAgent):
         workspace: Path | None = None,
         headless: bool = True,
         game_url: str | None = None,
+        step_delay: float = 0.0,
     ) -> None:
         self._temp_dir = None
         if workspace is None:
@@ -49,7 +50,7 @@ class GameAuditAgent(BaseAgent):
             self._workspace = workspace
         self._workspace.mkdir(parents=True, exist_ok=True)
         
-        self._mcp = MCPClient(headless=headless)
+        self._mcp = MCPClient(headless=headless, step_delay=step_delay)
         self._game_url = game_url or os.environ.get("GAME_TEST_URL")
         
         # Determine allowed domain for whitelisting
