@@ -144,6 +144,17 @@ python -m kubemin_agent.agents.game_audit test \
 
 GameAuditAgent 注册到中控层后，Scheduler 会自动识别意图并调度。
 
+### 5. 可观察模式与视觉光标测试
+
+你可以通过 `--no-headless` 和 `--step-delay` 开启 Agent 的可视追踪体验。Agent 会在被测网页中自动注入一个人类可见的虚拟鼠标光标，在进行点击、输入等操作前进行滑动动画并演示完整的交互轨迹：
+
+```bash
+python -m kubemin_agent.agents.game_audit.standalone test \
+  --url https://www.google.com \
+  --no-headless \
+  --step-delay 1.0
+```
+
 ## 审查策略
 
 GameAuditAgent 在测试过程中自动执行以下三项审查策略:
