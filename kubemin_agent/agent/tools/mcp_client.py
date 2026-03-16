@@ -10,6 +10,9 @@ from typing import Any
 
 from loguru import logger
 
+UI_ASSETS_DIR = Path(__file__).parent.parent.parent / "agents" / "game_audit" / "ui"
+
+
 
 class MCPClient:
     """
@@ -121,6 +124,101 @@ class MCPClient:
 
         result = await self._send_request("tools/list", {})
         return result.get("tools", [])
+
+    async def inject_ui_assets(self) -> None:
+        """Inject visual cursor CSS and JS into the current page."""
+        if self._step_delay <= 0:
+            return  # Only inject in observable mode
+            
+        try:
+            css_path = UI_ASSETS_DIR / "cursor.css"
+            js_path = UI_ASSETS_DIR / "cursor.js"
+            
+            if not css_path.exists() or not js_path.exists():
+                logger.warning(f"UI assets not found in {UI_ASSETS_DIR}")
+                return
+                
+            css_content = css_path.read_text().replace("`", "\\`")
+            js_content = js_path.read_text().replace("`", "\\`")
+            
+            # Inject CSS
+            inject_css_js = f"""
+            (function() {{
+                if (!document.getElementById('kubemin-agent-cursor-style')) {{
+                    const style = document.createElement('style');
+                    style.id = 'kubemin-agent-cursor-style';
+                    style.textContent = `{css_content}`;
+                    document.head.appendChild(style);
+                }}
+            }})();
+            {js_content}
+            """
+            
+            await self.call_tool("evaluate_script", {"function": inject_css_js})
+            logger.debug("Visual cursor UI assets injected")
+        except Exception as e:
+            logger.warning(f"Failed to inject UI assets: {e}")
+
+    async def get_element_coordinates(self, uid: str) -> tuple[int, int] | None:
+        """Get the center (x, y) coordinates of an element by its uid."""
+        if not uid:
+            return None
+            
+        js = f"""
+        (function() {{
+            const el = document.querySelector('[kubemin-agent-uid="{uid}"]') || document.querySelector('[data-mcp-uid="{uid}"]:not([data-mcp-uid=""])') || document.querySelector('[mcp-uid="{uid}"]:not([mcp-uid=""])') || document.querySelector(`[uid="{uid}"]`);
+            if (!el) return null;
+            const rect = el.getBoundingClientRect();
+            return {{
+                x: Math.round(rect.left + rect.width / 2),
+                y: Math.round(rect.top + rect.height / 2 + window.scrollY)
+            }};
+        }})();
+        """
+        try:
+            result = await self._send_request("tools/call", {
+                "name": "evaluate_script",
+                "arguments": {"function": js}
+            })
+            
+            if result and "content" in result:
+                import json
+                text = ""
+                for part in result["content"]:
+                    if part.get("type") == "text":
+                        text += part.get("text", "")
+                
+                try:
+                    data = json.loads(text)
+                    if data and isinstance(data, dict) and "x" in data and "y" in data:
+                        return (int(data["x"]), int(data["y"]))
+                except json.JSONDecodeError:
+                    pass
+            return None
+        except Exception as e:
+            logger.warning(f"Failed to get coordinates for uid {uid}: {e}")
+            return None
+
+    async def animate_cursor(self, x: int, y: int, is_click: bool = False) -> None:
+        """Trigger the visual cursor animation via custom events."""
+        if self._step_delay <= 0:
+            return  # Only animate in observable mode
+            
+        js = f"""
+        (function() {{
+            window.dispatchEvent(new CustomEvent('GameAuditAgent::MoveCursor', {{ 
+                detail: {{ x: {x}, y: {y} }} 
+            }}));
+            {f"window.dispatchEvent(new CustomEvent('GameAuditAgent::Click', {{}}));" if is_click else ""}
+        }})();
+        """
+        try:
+            await self._send_request("tools/call", {
+                "name": "evaluate_script",
+                "arguments": {"function": js}
+            })
+        except Exception as e:
+            logger.warning(f"Failed to animate cursor: {e}")
 
     async def _send_request(self, method: str, params: dict[str, Any]) -> dict[str, Any]:
         """Send a JSON-RPC request and wait for response."""

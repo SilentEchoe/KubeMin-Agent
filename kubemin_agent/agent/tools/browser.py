@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import asyncio
 from typing import Any
 from urllib.parse import urlparse
 
@@ -119,12 +120,22 @@ class BrowserTool(Tool):
                     if target_domain != self._allowed_domain and not target_domain.endswith(f".{self._allowed_domain}"):
                         return f"Error: Navigation to '{target_domain}' blocked by domain whitelist policy (allowed: {self._allowed_domain})."
 
-                return await self._mcp.call_tool("navigate_page", {"url": url})
+                result = await self._mcp.call_tool("navigate_page", {"url": url})
+                # Inject visual cursor assets after navigation
+                await self._mcp.inject_ui_assets()
+                return result
 
             elif action == "click":
                 uid = kwargs.get("uid", "")
                 if not uid:
                     return "Error: 'uid' is required. Use 'snapshot' first to get element uids."
+                
+                coords = await self._mcp.get_element_coordinates(uid)
+                if coords:
+                    await self._mcp.animate_cursor(coords[0], coords[1], is_click=True)
+                    if self._mcp._step_delay <= 0:
+                        await asyncio.sleep(0.4) # Wait for animation even if step_delay is 0
+
                 return await self._mcp.call_tool("click", {"uid": uid, "includeSnapshot": True})
 
             elif action == "fill":
@@ -132,12 +143,26 @@ class BrowserTool(Tool):
                 value = kwargs.get("value", "")
                 if not uid:
                     return "Error: 'uid' is required. Use 'snapshot' first to get element uids."
+                
+                coords = await self._mcp.get_element_coordinates(uid)
+                if coords:
+                    await self._mcp.animate_cursor(coords[0], coords[1], is_click=True)
+                    if self._mcp._step_delay <= 0:
+                        await asyncio.sleep(0.4)
+
                 return await self._mcp.call_tool("fill", {"uid": uid, "value": value, "includeSnapshot": True})
 
             elif action == "hover":
                 uid = kwargs.get("uid", "")
                 if not uid:
                     return "Error: 'uid' is required."
+                
+                coords = await self._mcp.get_element_coordinates(uid)
+                if coords:
+                    await self._mcp.animate_cursor(coords[0], coords[1])
+                    if self._mcp._step_delay <= 0:
+                        await asyncio.sleep(0.4)
+
                 return await self._mcp.call_tool("hover", {"uid": uid, "includeSnapshot": True})
 
             elif action == "drag":
@@ -145,6 +170,17 @@ class BrowserTool(Tool):
                 to_uid = kwargs.get("to_uid", "")
                 if not from_uid or not to_uid:
                     return "Error: 'uid' and 'to_uid' are required for drag."
+                
+                # Animate to source then to target
+                from_coords = await self._mcp.get_element_coordinates(from_uid)
+                to_coords = await self._mcp.get_element_coordinates(to_uid)
+                if from_coords and to_coords:
+                    await self._mcp.animate_cursor(from_coords[0], from_coords[1])
+                    await asyncio.sleep(0.4) # Wait for move
+                    await self._mcp.animate_cursor(to_coords[0], to_coords[1])
+                    if self._mcp._step_delay <= 0:
+                        await asyncio.sleep(0.4) # Wait for move to target
+
                 return await self._mcp.call_tool("drag", {"from_uid": from_uid, "to_uid": to_uid})
 
             elif action == "scroll":

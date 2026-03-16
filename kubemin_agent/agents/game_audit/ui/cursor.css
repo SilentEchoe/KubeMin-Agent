@@ -1,0 +1,43 @@
+/* kubemin_agent/agents/game_audit/ui/cursor.css */
+#kubemin-agent-cursor {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 24px;
+    height: 24px;
+    background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="red" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4l16 5.333-7.111 2.222L10.667 18.667 4 4z"/><path d="M12.889 11.556L18 18"/></svg>');
+    background-size: contain;
+    background-repeat: no-repeat;
+    pointer-events: none;
+    z-index: 99999999;
+    /* Smooth movement and origin matching standard cursor */
+    transform: translate(-2px, -2px);
+    transition: top 0.4s ease-in-out, left 0.4s ease-in-out;
+    opacity: 0; /* Hidden until first move */
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+#kubemin-agent-cursor.active {
+    opacity: 1;
+}
+
+#kubemin-agent-cursor::after {
+    content: '';
+    position: absolute;
+    width: 10px;
+    height: 10px;
+    background-color: rgba(255, 0, 0, 0.4);
+    border-radius: 50%;
+    transform: scale(0);
+    opacity: 0;
+    transition: transform 0.2s ease-out, opacity 0.2s ease-out;
+    pointer-events: none;
+}
+
+#kubemin-agent-cursor.clicking::after {
+    transform: scale(2.5);
+    opacity: 1;
+    transition: none;
+}

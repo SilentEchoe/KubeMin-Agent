@@ -58,7 +58,7 @@ Game URL ──┘                        (JSON-RPC over stdio)
 | Docker 容器部署 | 已实现 | Dockerfile + K8s 清单 |
 | CLI 独立运行 | 已实现 | game-audit-agent test / serve |
 | HTTP 服务模式 | 已实现 | FastAPI + /test + /health |
-| 可观察模式 (--no-headless + --step-delay) | 已实现 | 有头浏览器 + 操作前延迟, 让人可实时观察 Agent 操作全过程 |
+| 可观察模式与视觉光标 | 已实现 | 有头浏览器 + 自动注入视觉光标 (Visual Cursor) + 操作前延迟, 让人类可直观观测 Agent 的完整交互轨迹 (Move -> Click/Fill) |
 
 ## 安全约束
 
@@ -95,6 +95,7 @@ Game URL ──┘                        (JSON-RPC over stdio)
 
 | 日期 | 变更 | 原因 |
 |------|------|------|
+| 2026-03-16 | 新增视觉光标 (Visual Cursor) 交互轨迹展示 | 借鉴 page-agent 机制, 通过在页面注入 JS/CSS 并在操作前 Dispatch 坐标事件, 让审计过程的人类追踪更加直观可视 |
 | 2026-03-12 | 新增可观察模式: MCPClient 支持 step_delay 参数, GameAuditAgent 透传 headless/step_delay, standalone.py 暴露 --no-headless 和 --step-delay CLI 选项 | 支持人类实时观察 Agent 操作浏览器的全过程 |
 | 2026-02-26 | 新增 7 条安全策略, 报告增加 Security Findings + Self-Verification 章节 | 防止游戏/PDF 内容通过提示注入操纵审核结果 |
 | 2026-02-26 | Docker + K8s 部署支持, MCPClient 容器自动检测 | 支持容器化隔离运行 |
