@@ -4,7 +4,7 @@ import json
 from typing import Any
 
 from kubemin_agent.agent.tools.base import Tool
-from .models import TestPlan, TestCase, TestCaseStatus, AuditReportV1
+from .models import TestPlan, TestCase, TestCaseStatus, AuditReportV1, FSMNode, FSMEdge
 from .exceptions import SuspendExecutionException
 
 
@@ -34,19 +34,57 @@ class GeneratePlanTool(Tool):
                 "game_url": {"type": "string", "description": "The URL of the game being tested."},
                 "test_cases": {
                     "type": "array",
-                    "description": "List of test cases to execute.",
+                    "description": "List of global independent test cases.",
                     "items": {
                         "type": "object",
                         "properties": {
-                            "id": {"type": "string", "description": "Unique ID for the test case, e.g. TC-001."},
-                            "description": {"type": "string", "description": "What to verify."},
-                            "expected_result": {"type": "string", "description": "Expected outcome according to the guide."}
+                            "id": {"type": "string"},
+                            "description": {"type": "string"},
+                            "expected_result": {"type": "string"}
                         },
                         "required": ["id", "description", "expected_result"]
                     }
+                },
+                "nodes": {
+                    "type": "array",
+                    "description": "List of FSM nodes (pages/states).",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "id": {"type": "string", "description": "e.g., 'HomeContext'"},
+                            "description": {"type": "string"},
+                            "assertions": {
+                                "type": "array",
+                                "items": {
+                                    "type": "object",
+                                    "properties": {
+                                        "id": {"type": "string"},
+                                        "description": {"type": "string"},
+                                        "expected_result": {"type": "string"}
+                                    },
+                                    "required": ["id", "description", "expected_result"]
+                                }
+                            }
+                        },
+                        "required": ["id", "description"]
+                    }
+                },
+                "edges": {
+                    "type": "array",
+                    "description": "List of FSM edges (transitions).",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "id": {"type": "string", "description": "e.g., 'E-001'"},
+                            "source_node_id": {"type": "string"},
+                            "target_node_id": {"type": "string"},
+                            "action_description": {"type": "string"}
+                        },
+                        "required": ["id", "source_node_id", "target_node_id", "action_description"]
+                    }
                 }
             },
-            "required": ["plan_id", "game_url", "test_cases"]
+            "required": ["plan_id", "game_url", "nodes", "edges"]
         }
 
     async def execute(self, **kwargs: Any) -> str:
@@ -58,14 +96,41 @@ class GeneratePlanTool(Tool):
                 expected_result=c["expected_result"],
                 status=TestCaseStatus.PENDING
             ))
+            
+        nodes = []
+        for n in kwargs.get("nodes", []):
+            node_assertions = []
+            for ac in n.get("assertions", []):
+                node_assertions.append(TestCase(
+                    id=ac["id"],
+                    description=ac["description"],
+                    expected_result=ac["expected_result"],
+                    status=TestCaseStatus.PENDING
+                ))
+            nodes.append(FSMNode(
+                id=n["id"],
+                description=n["description"],
+                assertions=node_assertions
+            ))
+            
+        edges = []
+        for e in kwargs.get("edges", []):
+            edges.append(FSMEdge(
+                id=e["id"],
+                source_node_id=e["source_node_id"],
+                target_node_id=e["target_node_id"],
+                action_description=e["action_description"]
+            ))
         
         plan = TestPlan(
             plan_id=kwargs.get("plan_id"),
             game_url=kwargs.get("game_url"),
-            test_cases=cases
+            test_cases=cases,
+            nodes=nodes,
+            edges=edges
         )
         self.agent._test_plan = plan
-        return f"TestPlan '{plan.plan_id}' successfully generated with {len(cases)} test cases. Please proceed to execute them one by one."
+        return f"TestPlan '{plan.plan_id}' generated successfully with {len(nodes)} FSM nodes and {len(edges)} edges. Please proceed to explore the graph."
 
 
 class UpdateCaseStatusTool(Tool):
@@ -107,15 +172,29 @@ class UpdateCaseStatusTool(Tool):
             return "Error: No TestPlan found. Please call generate_plan first."
 
         case_id = kwargs["case_id"]
+        
+        # Search global cases
         for case in self.agent._test_plan.test_cases:
             if case.id == case_id:
                 case.status = TestCaseStatus(kwargs["status"])
                 case.actual_result = kwargs["actual_result"]
                 case.evidence_links = kwargs.get("evidence_links", [])
                 case.error_message = kwargs.get("error_message")
-                return f"Test case '{case_id}' status successfully updated to {case.status.value}."
+                return f"Global test case '{case_id}' status successfully updated to {case.status.value}."
                 
-        return f"Error: Test case '{case_id}' not found in the current TestPlan."
+        # Search node assertions
+        for node in self.agent._test_plan.nodes:
+            for case in node.assertions:
+                if case.id == case_id:
+                    # Update node status logic: mark node visited if we are executing its cases
+                    node.is_visited = True
+                    case.status = TestCaseStatus(kwargs["status"])
+                    case.actual_result = kwargs["actual_result"]
+                    case.evidence_links = kwargs.get("evidence_links", [])
+                    case.error_message = kwargs.get("error_message")
+                    return f"Assertion '{case_id}' on node '{node.id}' successfully updated to {case.status.value}."
+                
+        return f"Error: Test case/Assertion '{case_id}' not found in the current TestPlan (neither global nor within nodes)."
 
 
 class SubmitReportTool(Tool):
@@ -144,9 +223,11 @@ class SubmitReportTool(Tool):
                 "total_vulnerabilities": {"type": "integer"},
                 "critical_issues": {"type": "integer"},
                 "high_issues": {"type": "integer"},
+                "fsm_node_coverage": {"type": "number", "description": "Percentage of nodes visited (0.0 to 1.0)."},
+                "fsm_edge_coverage": {"type": "number", "description": "Percentage of edges successfully traversed (0.0 to 1.0)."},
                 "markdown_report": {"type": "string", "description": "A comprehensive markdown report string."}
             },
-            "required": ["status", "total_vulnerabilities", "critical_issues", "high_issues", "markdown_report"]
+            "required": ["status", "total_vulnerabilities", "critical_issues", "high_issues", "fsm_node_coverage", "markdown_report"]
         }
 
     async def execute(self, **kwargs: Any) -> str:
@@ -159,6 +240,8 @@ class SubmitReportTool(Tool):
             total_vulnerabilities=kwargs["total_vulnerabilities"],
             critical_issues=kwargs["critical_issues"],
             high_issues=kwargs["high_issues"],
+            fsm_node_coverage=kwargs.get("fsm_node_coverage", 0.0),
+            fsm_edge_coverage=kwargs.get("fsm_edge_coverage", 0.0),
             plan=self.agent._test_plan,
             markdown_report=kwargs["markdown_report"]
         )

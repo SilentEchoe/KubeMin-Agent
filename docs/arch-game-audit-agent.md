@@ -59,6 +59,7 @@ Game URL ──┘                        (JSON-RPC over stdio)
 | CLI 独立运行 | 已实现 | game-audit-agent test / serve |
 | HTTP 服务模式 | 已实现 | FastAPI + /test + /health |
 | 可观察模式与视觉光标 | 已实现 | 有头浏览器 + 自动注入视觉光标 (Visual Cursor) + 操作前延迟, 让人类可直观观测 Agent 的完整交互轨迹 (Move -> Click/Fill) |
+| FSM 状态机路径探察 | 已实现 | 采用图结构驱动测试计划并生成节点覆盖度报告，取代脆弱的线性测试列表 |
 
 ## 安全约束
 
@@ -90,11 +91,13 @@ Game URL ──┘                        (JSON-RPC over stdio)
 | 安全策略最高优先级位置 | Primacy Bias -- LLM 更重视 prompt 开头的内容 | 放在 prompt 末尾 (放弃: 容易被中间内容覆盖) |
 | 容器内自动检测 (/.dockerenv) | 零配置, 开发者不需要手动设置 --no-sandbox | 环境变量强制配置 (放弃: 容易遗漏) |
 | GAME_TEST_URL 环境变量 | 容器/K8s 环境下通过 env 注入更自然 | 仅 CLI 参数 (放弃: 不适合容器化部署) |
+| 引入 FSM 状态机执行模型 | 解决线性测试计划导致的边缘分支遗漏和意外弹窗阻断问题 | 线性测试用例列表 (放弃: 覆盖率低，容易被中断) |
 
 ## 变更日志
 
 | 日期 | 变更 | 原因 |
 |------|------|------|
+| 2026-03-16 | 引入 FSM 状态机路径执行模型与测试覆盖率度量 | 彻底打消线性用例导致的分析遗漏疑虑，实现 100% 节点覆盖跟踪 |
 | 2026-03-16 | 新增视觉光标 (Visual Cursor) 交互轨迹展示 | 借鉴 page-agent 机制, 通过在页面注入 JS/CSS 并在操作前 Dispatch 坐标事件, 让审计过程的人类追踪更加直观可视 |
 | 2026-03-12 | 新增可观察模式: MCPClient 支持 step_delay 参数, GameAuditAgent 透传 headless/step_delay, standalone.py 暴露 --no-headless 和 --step-delay CLI 选项 | 支持人类实时观察 Agent 操作浏览器的全过程 |
 | 2026-02-26 | 新增 7 条安全策略, 报告增加 Security Findings + Self-Verification 章节 | 防止游戏/PDF 内容通过提示注入操纵审核结果 |
