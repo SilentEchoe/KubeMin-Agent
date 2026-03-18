@@ -111,3 +111,56 @@ async def test_get_past_reports_full_mode_keeps_raw_payload():
     tool = GetPastReportsTool(agent_mock)
     res = await tool.execute(game_url="http://test.com/game", mode="full")
     assert raw in res
+
+
+@pytest.mark.asyncio
+async def test_submit_report_fallback_for_missing_fields(tmp_path):
+    agent_mock = SimpleNamespace(
+        _test_plan=TestPlan(plan_id="p2", game_url="http://test.com/game"),
+        _memory=AsyncMock(),
+        _workspace=tmp_path,
+    )
+
+    tool = SubmitReportTool(agent_mock)
+    res = await tool.execute(status="CONDITIONAL")
+
+    assert "saved to memory" in res
+    assert "Validation warnings" in res
+    assert agent_mock._final_report.total_vulnerabilities == 0
+    assert agent_mock._final_report.fsm_node_coverage == 0.0
+    assert "# Game Audit Report" in agent_mock._final_report.markdown_report
+
+
+@pytest.mark.asyncio
+async def test_submit_report_rejects_invalid_coverage(tmp_path):
+    agent_mock = SimpleNamespace(
+        _test_plan=TestPlan(plan_id="p3", game_url="http://test.com/game"),
+        _memory=AsyncMock(),
+        _workspace=tmp_path,
+    )
+
+    tool = SubmitReportTool(agent_mock)
+    res = await tool.execute(status="PASS", fsm_node_coverage=1.2)
+    assert "fsm_node_coverage must be between 0.0 and 1.0" in res
+
+
+@pytest.mark.asyncio
+async def test_submit_report_normalizes_inconsistent_totals(tmp_path):
+    agent_mock = SimpleNamespace(
+        _test_plan=TestPlan(plan_id="p4", game_url="http://test.com/game"),
+        _memory=AsyncMock(),
+        _workspace=tmp_path,
+    )
+
+    tool = SubmitReportTool(agent_mock)
+    res = await tool.execute(
+        status="PASS",
+        total_vulnerabilities=1,
+        critical_issues=1,
+        high_issues=2,
+        markdown_report="report",
+    )
+
+    assert "Validation warnings" in res
+    assert agent_mock._final_report.total_vulnerabilities == 3
+    assert agent_mock._final_report.status == "CONDITIONAL"

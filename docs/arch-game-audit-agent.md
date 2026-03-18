@@ -97,6 +97,7 @@ Game URL ──┘                        (JSON-RPC over stdio)
 
 | 日期 | 变更 | 原因 |
 |------|------|------|
+| 2026-03-18 | 强化 `submit_report` 校验与兜底（覆盖率范围校验、漏洞计数归一化、缺失字段自动补全） | 提升报告结构稳定性，降低 LLM 输出字段缺失导致的失败率 |
 | 2026-03-16 | 引入 FSM 状态机路径执行模型与测试覆盖率度量 | 彻底打消线性用例导致的分析遗漏疑虑，实现 100% 节点覆盖跟踪 |
 | 2026-03-16 | 新增视觉光标 (Visual Cursor) 交互轨迹展示 | 借鉴 page-agent 机制, 通过在页面注入 JS/CSS 并在操作前 Dispatch 坐标事件, 让审计过程的人类追踪更加直观可视 |
 | 2026-03-12 | 新增可观察模式: MCPClient 支持 step_delay 参数, GameAuditAgent 透传 headless/step_delay, standalone.py 暴露 --no-headless 和 --step-delay CLI 选项 | 支持人类实时观察 Agent 操作浏览器的全过程 |

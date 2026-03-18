@@ -228,23 +228,86 @@ class SubmitReportTool(Tool):
                 "fsm_edge_coverage": {"type": "number", "description": "Percentage of edges successfully traversed (0.0 to 1.0)."},
                 "markdown_report": {"type": "string", "description": "A comprehensive markdown report string."}
             },
-            "required": ["status", "total_vulnerabilities", "critical_issues", "high_issues", "fsm_node_coverage", "markdown_report"]
+            "required": ["status"]
         }
 
     async def execute(self, **kwargs: Any) -> str:
         if not hasattr(self.agent, "_test_plan") or not self.agent._test_plan:
             return "Error: No TestPlan found. Please call generate_plan first."
 
+        status = self._normalize_status(kwargs.get("status", "CONDITIONAL"))
+        if status is None:
+            return "Error: status must be one of PASS/FAIL/CONDITIONAL."
+
+        critical_issues, err = self._to_non_negative_int(kwargs.get("critical_issues", 0), "critical_issues")
+        if err:
+            return err
+        high_issues, err = self._to_non_negative_int(kwargs.get("high_issues", 0), "high_issues")
+        if err:
+            return err
+
+        warnings: list[str] = []
+
+        total_raw = kwargs.get("total_vulnerabilities")
+        if total_raw is None:
+            total_vulnerabilities = critical_issues + high_issues
+            warnings.append("total_vulnerabilities missing, fallback to critical_issues + high_issues.")
+        else:
+            total_vulnerabilities, err = self._to_non_negative_int(total_raw, "total_vulnerabilities")
+            if err:
+                return err
+            minimum_total = critical_issues + high_issues
+            if total_vulnerabilities < minimum_total:
+                total_vulnerabilities = minimum_total
+                warnings.append(
+                    "total_vulnerabilities was smaller than critical_issues + high_issues; normalized."
+                )
+
+        default_node_coverage, default_edge_coverage = self._calculate_plan_coverages(self.agent._test_plan)
+
+        node_cov, err = self._resolve_coverage(
+            kwargs.get("fsm_node_coverage"),
+            fallback=default_node_coverage,
+            field_name="fsm_node_coverage",
+            warnings=warnings,
+        )
+        if err:
+            return err
+        edge_cov, err = self._resolve_coverage(
+            kwargs.get("fsm_edge_coverage"),
+            fallback=default_edge_coverage,
+            field_name="fsm_edge_coverage",
+            warnings=warnings,
+        )
+        if err:
+            return err
+
+        markdown_report = str(kwargs.get("markdown_report", "")).strip()
+        if not markdown_report:
+            markdown_report = self._build_fallback_markdown(
+                status=status,
+                total_vulnerabilities=total_vulnerabilities,
+                critical_issues=critical_issues,
+                high_issues=high_issues,
+                node_cov=node_cov,
+                edge_cov=edge_cov,
+            )
+            warnings.append("markdown_report missing, fallback markdown generated.")
+
+        if status == "PASS" and total_vulnerabilities > 0:
+            status = "CONDITIONAL"
+            warnings.append("status PASS conflicts with vulnerabilities > 0; downgraded to CONDITIONAL.")
+
         report = AuditReportV1(
-            status=kwargs["status"],
+            status=status,
             game_url=self.agent._test_plan.game_url,
-            total_vulnerabilities=kwargs["total_vulnerabilities"],
-            critical_issues=kwargs["critical_issues"],
-            high_issues=kwargs["high_issues"],
-            fsm_node_coverage=kwargs.get("fsm_node_coverage", 0.0),
-            fsm_edge_coverage=kwargs.get("fsm_edge_coverage", 0.0),
+            total_vulnerabilities=total_vulnerabilities,
+            critical_issues=critical_issues,
+            high_issues=high_issues,
+            fsm_node_coverage=node_cov,
+            fsm_edge_coverage=edge_cov,
             plan=self.agent._test_plan,
-            markdown_report=kwargs["markdown_report"]
+            markdown_report=markdown_report,
         )
 
         # Save output in agent state so we can return it at the end of the run
@@ -257,11 +320,91 @@ class SubmitReportTool(Tool):
         if hasattr(self.agent, "_memory") and self.agent._memory:
             await self.agent._memory.remember(
                 content=report.model_dump_json(indent=2),
-                tags=["game_audit", self.agent._test_plan.game_url]
+                tags=["game_audit", self.agent._test_plan.game_url],
             )
 
         report_path.write_text(report.model_dump_json(indent=2))
+        if warnings:
+            return (
+                "Report successfully submitted and saved to memory. "
+                f"The audit run is complete. Validation warnings: {' | '.join(warnings)}"
+            )
         return "Report successfully submitted and saved to memory. The audit run is complete."
+
+    def _normalize_status(self, value: Any) -> str | None:
+        """Normalize status to PASS/FAIL/CONDITIONAL."""
+        if value is None:
+            return None
+        normalized = str(value).strip().upper()
+        if normalized in {"PASS", "FAIL", "CONDITIONAL"}:
+            return normalized
+        return None
+
+    def _to_non_negative_int(self, value: Any, field_name: str) -> tuple[int, str | None]:
+        """Convert value to a non-negative integer, returning (value, error)."""
+        try:
+            number = int(value)
+        except (TypeError, ValueError):
+            return 0, f"Error: {field_name} must be a non-negative integer."
+        if number < 0:
+            return 0, f"Error: {field_name} must be a non-negative integer."
+        return number, None
+
+    def _resolve_coverage(
+        self,
+        value: Any,
+        *,
+        fallback: float,
+        field_name: str,
+        warnings: list[str],
+    ) -> tuple[float, str | None]:
+        """Resolve coverage value with range validation and fallback."""
+        if value is None:
+            warnings.append(f"{field_name} missing, fallback to computed coverage.")
+            return fallback, None
+        try:
+            coverage = float(value)
+        except (TypeError, ValueError):
+            return 0.0, f"Error: {field_name} must be a number between 0.0 and 1.0."
+        if coverage < 0.0 or coverage > 1.0:
+            return 0.0, f"Error: {field_name} must be between 0.0 and 1.0."
+        return coverage, None
+
+    def _calculate_plan_coverages(self, plan: TestPlan) -> tuple[float, float]:
+        """Compute fallback node/edge coverage from current plan state."""
+        if plan.nodes:
+            visited = sum(1 for node in plan.nodes if node.is_visited)
+            node_cov = visited / len(plan.nodes)
+        else:
+            node_cov = 0.0
+
+        if plan.edges:
+            traversed = sum(1 for edge in plan.edges if edge.is_traversed)
+            edge_cov = traversed / len(plan.edges)
+        else:
+            edge_cov = 0.0
+        return node_cov, edge_cov
+
+    def _build_fallback_markdown(
+        self,
+        *,
+        status: str,
+        total_vulnerabilities: int,
+        critical_issues: int,
+        high_issues: int,
+        node_cov: float,
+        edge_cov: float,
+    ) -> str:
+        """Build minimal markdown when markdown_report is missing."""
+        return (
+            "# Game Audit Report\n\n"
+            f"- Status: {status}\n"
+            f"- Total Vulnerabilities: {total_vulnerabilities}\n"
+            f"- Critical Issues: {critical_issues}\n"
+            f"- High Issues: {high_issues}\n"
+            f"- FSM Node Coverage: {node_cov:.2f}\n"
+            f"- FSM Edge Coverage: {edge_cov:.2f}\n"
+        )
 
 
 class RequestHumanReviewTool(Tool):
