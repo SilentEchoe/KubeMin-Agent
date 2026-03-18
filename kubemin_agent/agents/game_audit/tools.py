@@ -4,8 +4,9 @@ import json
 from typing import Any
 
 from kubemin_agent.agent.tools.base import Tool
-from .models import TestPlan, TestCase, TestCaseStatus, AuditReportV1, FSMNode, FSMEdge
+
 from .exceptions import SuspendExecutionException
+from .models import AuditReportV1, FSMEdge, FSMNode, TestCase, TestCaseStatus, TestPlan
 
 
 class GeneratePlanTool(Tool):
@@ -96,7 +97,7 @@ class GeneratePlanTool(Tool):
                 expected_result=c["expected_result"],
                 status=TestCaseStatus.PENDING
             ))
-            
+
         nodes = []
         for n in kwargs.get("nodes", []):
             node_assertions = []
@@ -112,7 +113,7 @@ class GeneratePlanTool(Tool):
                 description=n["description"],
                 assertions=node_assertions
             ))
-            
+
         edges = []
         for e in kwargs.get("edges", []):
             edges.append(FSMEdge(
@@ -121,7 +122,7 @@ class GeneratePlanTool(Tool):
                 target_node_id=e["target_node_id"],
                 action_description=e["action_description"]
             ))
-        
+
         plan = TestPlan(
             plan_id=kwargs.get("plan_id"),
             game_url=kwargs.get("game_url"),
@@ -172,7 +173,7 @@ class UpdateCaseStatusTool(Tool):
             return "Error: No TestPlan found. Please call generate_plan first."
 
         case_id = kwargs["case_id"]
-        
+
         # Search global cases
         for case in self.agent._test_plan.test_cases:
             if case.id == case_id:
@@ -181,7 +182,7 @@ class UpdateCaseStatusTool(Tool):
                 case.evidence_links = kwargs.get("evidence_links", [])
                 case.error_message = kwargs.get("error_message")
                 return f"Global test case '{case_id}' status successfully updated to {case.status.value}."
-                
+
         # Search node assertions
         for node in self.agent._test_plan.nodes:
             for case in node.assertions:
@@ -193,7 +194,7 @@ class UpdateCaseStatusTool(Tool):
                     case.evidence_links = kwargs.get("evidence_links", [])
                     case.error_message = kwargs.get("error_message")
                     return f"Assertion '{case_id}' on node '{node.id}' successfully updated to {case.status.value}."
-                
+
         return f"Error: Test case/Assertion '{case_id}' not found in the current TestPlan (neither global nor within nodes)."
 
 
@@ -245,13 +246,13 @@ class SubmitReportTool(Tool):
             plan=self.agent._test_plan,
             markdown_report=kwargs["markdown_report"]
         )
-        
+
         # Save output in agent state so we can return it at the end of the run
         self.agent._final_report = report
-        
+
         # We can also save it to workspace for persistence
         report_path = self.agent._workspace / "audit_report_v1.json"
-        
+
         # Save to MemoryStore for cross-run history
         if hasattr(self.agent, "_memory") and self.agent._memory:
             await self.agent._memory.remember(
@@ -295,13 +296,19 @@ class RequestHumanReviewTool(Tool):
 
     async def execute(self, **kwargs: Any) -> str:
         case_id = kwargs["case_id"]
-        
+
         # Optionally, mark the case as PENDING_REVIEW if we have a test plan
         if hasattr(self.agent, "_test_plan") and self.agent._test_plan:
             for case in self.agent._test_plan.test_cases:
                 if case.id == case_id:
                     case.status = TestCaseStatus.PENDING_REVIEW
                     break
+            for node in self.agent._test_plan.nodes:
+                for case in node.assertions:
+                    if case.id == case_id:
+                        node.is_visited = True
+                        case.status = TestCaseStatus.PENDING_REVIEW
+                        break
 
         raise SuspendExecutionException(
             reason=kwargs["reason"],
@@ -333,7 +340,12 @@ class GetPastReportsTool(Tool):
             "type": "object",
             "properties": {
                 "game_url": {"type": "string", "description": "The URL of the game."},
-                "limit": {"type": "integer", "description": "Maximum number of past reports to return. Default is 5."}
+                "limit": {"type": "integer", "description": "Maximum number of past reports to return. Default is 5."},
+                "mode": {
+                    "type": "string",
+                    "enum": ["summary", "full"],
+                    "description": "summary returns compact regression-oriented digest; full returns raw report payloads."
+                },
             },
             "required": ["game_url"]
         }
@@ -343,25 +355,99 @@ class GetPastReportsTool(Tool):
             return "Error: Memory store is not available."
 
         game_url = kwargs["game_url"]
-        limit = kwargs.get("limit", 5)
-        
+        mode = str(kwargs.get("mode", "summary")).lower()
+        try:
+            limit = int(kwargs.get("limit", 5))
+        except (TypeError, ValueError):
+            limit = 5
+        limit = min(max(limit, 1), 20)
+
         # Search for exact game_url in tags or query
         query = f"game_audit {game_url}"
         memories = await self.agent._memory.recall(query=query, top_k=limit)
-        
+
         if not memories:
             return f"No past reports found for {game_url}."
-            
+
         reports = []
+        parsed_reports: list[dict[str, Any]] = []
         for i, m in enumerate(memories):
-            try:
-                # We expect the content to be the JSON string of AuditReportV1
+            if mode == "full":
                 reports.append(f"--- Past Report {i+1} ({m.created_at}) ---\n{m.content}")
+                continue
+
+            # summary mode
+            try:
+                report = json.loads(m.content)
+                parsed_reports.append(report)
+                failed_cases = self._extract_failed_case_ids(report)
+                markdown_hint = str(report.get("markdown_report", "")).strip().replace("\n", " ")
+                if len(markdown_hint) > 160:
+                    markdown_hint = markdown_hint[:160] + "...[truncated]"
+                reports.append(
+                    f"--- Past Report {i+1} ({m.created_at}) ---\n"
+                    f"status={report.get('status', 'UNKNOWN')}, "
+                    f"issues(total/critical/high)="
+                    f"{report.get('total_vulnerabilities', 0)}/"
+                    f"{report.get('critical_issues', 0)}/"
+                    f"{report.get('high_issues', 0)}, "
+                    f"coverage(node/edge)="
+                    f"{report.get('fsm_node_coverage', 0.0)}/"
+                    f"{report.get('fsm_edge_coverage', 0.0)}\n"
+                    f"failed_cases={', '.join(failed_cases) if failed_cases else '-'}\n"
+                    f"report_hint={markdown_hint or '-'}"
+                )
             except Exception:
-                pass
-                
+                raw = str(m.content).strip().replace("\n", " ")
+                if len(raw) > 160:
+                    raw = raw[:160] + "...[truncated]"
+                reports.append(
+                    f"--- Past Report {i+1} ({m.created_at}) ---\n"
+                    f"unparsed_content={raw}"
+                )
+
         if not reports:
             return f"No valid past reports found for {game_url}."
-            
-        return "\n\n".join(reports)
 
+        if mode == "full":
+            return "\n\n".join(reports)
+
+        persistent_failures = self._find_persistent_failures(parsed_reports)
+        summary_header = (
+            f"Historical summary for {game_url}\n"
+            f"reports={len(reports)}\n"
+            f"persistent_failures={', '.join(persistent_failures) if persistent_failures else '-'}"
+        )
+        return summary_header + "\n\n" + "\n\n".join(reports)
+
+    def _extract_failed_case_ids(self, report: dict[str, Any]) -> list[str]:
+        """Extract failed/pending-review case IDs from report payload."""
+        failed: set[str] = set()
+        plan = report.get("plan", {})
+
+        for case in plan.get("test_cases", []):
+            case_id = str(case.get("id", "")).strip()
+            status = str(case.get("status", "")).upper()
+            if case_id and status in {"FAILED", "PENDING_REVIEW"}:
+                failed.add(case_id)
+
+        for node in plan.get("nodes", []):
+            for case in node.get("assertions", []):
+                case_id = str(case.get("id", "")).strip()
+                status = str(case.get("status", "")).upper()
+                if case_id and status in {"FAILED", "PENDING_REVIEW"}:
+                    failed.add(case_id)
+
+        return sorted(failed)
+
+    def _find_persistent_failures(self, reports: list[dict[str, Any]]) -> list[str]:
+        """Find case IDs that fail across all parsed reports."""
+        if not reports:
+            return []
+        failure_sets = [set(self._extract_failed_case_ids(r)) for r in reports]
+        if not failure_sets:
+            return []
+        intersection = failure_sets[0]
+        for failure_set in failure_sets[1:]:
+            intersection = intersection.intersection(failure_set)
+        return sorted(intersection)
