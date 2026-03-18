@@ -594,3 +594,126 @@ class GetPastReportsTool(Tool):
         for failure_set in failure_sets[1:]:
             intersection = intersection.intersection(failure_set)
         return sorted(intersection)
+
+
+class EvaluateRegressionGateTool(Tool):
+    """Tool to evaluate release gate recommendation from history + current run."""
+
+    def __init__(self, agent: Any) -> None:
+        self.agent = agent
+
+    @property
+    def name(self) -> str:
+        return "evaluate_regression_gate"
+
+    @property
+    def description(self) -> str:
+        return (
+            "Evaluate regression gate recommendation (PASS/CONDITIONAL/FAIL) based on "
+            "historical persistent failures and current run findings."
+        )
+
+    @property
+    def parameters(self) -> dict[str, Any]:
+        return {
+            "type": "object",
+            "properties": {
+                "game_url": {"type": "string", "description": "The URL of the game."},
+                "current_failed_cases": {
+                    "type": "array",
+                    "description": "Optional current-run failed/pending-review case IDs.",
+                    "items": {"type": "string"},
+                },
+                "current_critical_issues": {"type": "integer", "description": "Current run critical issues."},
+                "current_high_issues": {"type": "integer", "description": "Current run high issues."},
+                "limit": {"type": "integer", "description": "How many historical reports to consider. Default 5."},
+            },
+            "required": ["game_url"],
+        }
+
+    async def execute(self, **kwargs: Any) -> str:
+        game_url = kwargs["game_url"]
+        current_failed_cases = self._normalize_case_ids(kwargs.get("current_failed_cases"))
+        if not current_failed_cases:
+            current_failed_cases = self._extract_current_failed_cases_from_plan()
+
+        current_critical_issues = self._to_non_negative_int(kwargs.get("current_critical_issues", 0))
+        current_high_issues = self._to_non_negative_int(kwargs.get("current_high_issues", 0))
+        limit = min(max(self._to_non_negative_int(kwargs.get("limit", 5)) or 5, 1), 20)
+
+        parsed_reports: list[dict[str, Any]] = []
+        memory_enabled = bool(hasattr(self.agent, "_memory") and self.agent._memory)
+        if memory_enabled:
+            query = f"game_audit {game_url}"
+            memories = await self.agent._memory.recall(query=query, top_k=limit)
+            for memory in memories:
+                try:
+                    parsed_reports.append(json.loads(memory.content))
+                except Exception:
+                    continue
+
+        helper = GetPastReportsTool(self.agent)
+        persistent_failures = helper._find_persistent_failures(parsed_reports)
+        unresolved_persistent = sorted(set(current_failed_cases).intersection(persistent_failures))
+
+        score = 100
+        score -= current_critical_issues * 25
+        score -= current_high_issues * 12
+        score -= len(current_failed_cases) * 6
+        score -= len(unresolved_persistent) * 10
+        score = max(0, min(100, score))
+
+        recommendation = "PASS"
+        if current_critical_issues > 0 or unresolved_persistent:
+            recommendation = "FAIL"
+        elif current_high_issues > 0 or current_failed_cases:
+            recommendation = "CONDITIONAL"
+        elif score < 70:
+            recommendation = "CONDITIONAL"
+
+        result = {
+            "game_url": game_url,
+            "recommendation": recommendation,
+            "gate_score": score,
+            "current_failed_cases": current_failed_cases,
+            "current_critical_issues": current_critical_issues,
+            "current_high_issues": current_high_issues,
+            "persistent_failures": persistent_failures,
+            "unresolved_persistent_failures": unresolved_persistent,
+            "history_reports_considered": len(parsed_reports),
+            "history_enabled": memory_enabled,
+        }
+        return "Regression gate evaluated.\n" + json.dumps(result, ensure_ascii=False, indent=2)
+
+    def _normalize_case_ids(self, value: Any) -> list[str]:
+        """Normalize case id list to unique sorted list."""
+        if not isinstance(value, list):
+            return []
+        cleaned = {str(item).strip() for item in value if str(item).strip()}
+        return sorted(cleaned)
+
+    def _to_non_negative_int(self, value: Any) -> int:
+        """Convert value to non-negative integer; invalid values fallback to 0."""
+        try:
+            number = int(value)
+        except (TypeError, ValueError):
+            return 0
+        return max(0, number)
+
+    def _extract_current_failed_cases_from_plan(self) -> list[str]:
+        """Extract failed/pending-review case IDs from current in-memory plan."""
+        if not hasattr(self.agent, "_test_plan") or not self.agent._test_plan:
+            return []
+        plan = self.agent._test_plan
+        failed: set[str] = set()
+
+        for case in plan.test_cases:
+            if case.status in {TestCaseStatus.FAILED, TestCaseStatus.PENDING_REVIEW}:
+                failed.add(case.id)
+
+        for node in plan.nodes:
+            for case in node.assertions:
+                if case.status in {TestCaseStatus.FAILED, TestCaseStatus.PENDING_REVIEW}:
+                    failed.add(case.id)
+
+        return sorted(failed)

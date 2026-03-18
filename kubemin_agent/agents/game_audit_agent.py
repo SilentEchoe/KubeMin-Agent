@@ -13,12 +13,19 @@ from kubemin_agent.agent.tools.mcp_client import MCPClient
 from kubemin_agent.agent.tools.pdf_reader import PDFReaderTool
 from kubemin_agent.agent.tools.screenshot import ScreenshotTool
 from kubemin_agent.agents.base import BaseAgent
-from kubemin_agent.providers.base import LLMProvider
-from kubemin_agent.session.manager import SessionManager
-from kubemin_agent.agents.game_audit.models import TestPlan, AuditReportV1
-from kubemin_agent.agents.game_audit.tools import GeneratePlanTool, UpdateCaseStatusTool, SubmitReportTool, RequestHumanReviewTool, GetPastReportsTool
 from kubemin_agent.agents.game_audit.assert_tool import AssertTool
 from kubemin_agent.agents.game_audit.exceptions import SuspendExecutionException
+from kubemin_agent.agents.game_audit.models import AuditReportV1, TestPlan
+from kubemin_agent.agents.game_audit.tools import (
+    EvaluateRegressionGateTool,
+    GeneratePlanTool,
+    GetPastReportsTool,
+    RequestHumanReviewTool,
+    SubmitReportTool,
+    UpdateCaseStatusTool,
+)
+from kubemin_agent.providers.base import LLMProvider
+from kubemin_agent.session.manager import SessionManager
 
 
 class GameAuditAgent(BaseAgent):
@@ -49,10 +56,10 @@ class GameAuditAgent(BaseAgent):
         else:
             self._workspace = workspace
         self._workspace.mkdir(parents=True, exist_ok=True)
-        
+
         self._mcp = MCPClient(headless=headless, step_delay=step_delay)
         self._game_url = game_url or os.environ.get("GAME_TEST_URL")
-        
+
         # Determine allowed domain for whitelisting
         self._allowed_domain = None
         if self._game_url:
@@ -82,7 +89,7 @@ class GameAuditAgent(BaseAgent):
             "read_pdf", "browser_action", "take_screenshot", "audit_content",
             "read_file", "write_file", "generate_plan", "update_case_status",
             "submit_report", "run_assertion", "request_human_review",
-            "get_past_reports"
+            "get_past_reports", "evaluate_regression_gate",
         ]
 
     @property
@@ -163,8 +170,9 @@ class GameAuditAgent(BaseAgent):
             "9. Audit game content for compliance using 'audit_content' when arriving at a new node.\n"
             "10. For EACH assertion completed on a node, or for global cases, CALL THE 'update_case_status' TOOL to persist its PASS/FAIL state and evidence.\n\n"
             "PHASE 3: Submission & Coverage Calculation\n"
-            "11. Once the graph exploration is concluded (or blocked), CALL THE 'submit_report' TOOL to finalize the audit.\n"
-            "12. Ensure you provide 'fsm_node_coverage' and 'fsm_edge_coverage' (values from 0.0 to 1.0) representing the graph traversal completeness.\n\n"
+            "11. Before finalizing, CALL 'evaluate_regression_gate' with current run findings to assess persistent regressions.\n"
+            "12. Once the graph exploration is concluded (or blocked), CALL THE 'submit_report' TOOL to finalize the audit.\n"
+            "13. Ensure you provide 'fsm_node_coverage' and 'fsm_edge_coverage' (values from 0.0 to 1.0) representing the graph traversal completeness.\n\n"
             "IMPORTANT: Element interaction uses uid-based targeting.\n"
             "- Always call 'snapshot' first to see available elements and their uids\n"
             "- Use the uid from the snapshot when calling click, fill, hover, etc.\n"
@@ -236,6 +244,7 @@ class GameAuditAgent(BaseAgent):
         self.tools.register(AssertTool())
         self.tools.register(RequestHumanReviewTool(self))
         self.tools.register(GetPastReportsTool(self))
+        self.tools.register(EvaluateRegressionGateTool(self))
 
     async def run(
         self,
