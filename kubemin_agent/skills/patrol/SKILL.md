@@ -1,7 +1,10 @@
 ---
 name: patrol
 description: KubeMin-Cli 平台巡检技能 — 健康检查策略、事件分析规则与报告模板
-always: true
+version: "1"
+always: false
+agents: [patrol]
+triggers: []
 ---
 
 # Patrol Skill — KubeMin-Cli 平台巡检

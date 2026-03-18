@@ -1,8 +1,5 @@
 """PatrolAgent - KubeMin-Cli platform health patrol specialist."""
 
-from pathlib import Path
-
-from kubemin_agent.agent.skills import SkillsLoader
 from kubemin_agent.agent.tools.filesystem import ReadFileTool, WriteFileTool
 from kubemin_agent.agent.tools.kubectl import KubectlTool
 from kubemin_agent.agent.tools.kubemin_cli import KubeMinCliTool
@@ -50,7 +47,6 @@ class PatrolAgent(BaseAgent):
 
     @property
     def system_prompt(self) -> str:
-        skills_section = self._load_patrol_skills()
         return (
             "You are PatrolAgent, a platform health patrol specialist within KubeMin-Agent.\n\n"
             "Your mission:\n"
@@ -70,8 +66,7 @@ class PatrolAgent(BaseAgent):
             "- Never execute apply, delete, patch, edit, or scale commands\n"
             "- Never expose secrets or sensitive configuration values\n"
             "- Filter out any credential or API key content from reports\n\n"
-            "Always explain what you're inspecting and provide clear, actionable findings.\n\n"
-            f"{skills_section}"
+            "Always explain what you're inspecting and provide clear, actionable findings."
         )
 
     @property
@@ -88,22 +83,3 @@ class PatrolAgent(BaseAgent):
             api_base=self._kubemin_api_base,
             namespace=self._kubemin_namespace,
         ))
-
-    def _load_patrol_skills(self) -> str:
-        """Load patrol skill content via SkillsLoader."""
-        loader = SkillsLoader(self._workspace)
-
-        # Try to load the built-in patrol skill
-        skill = loader.get_skill("patrol")
-        if skill:
-            content = skill.load_content()
-            if content:
-                return f"=== PATROL SKILL KNOWLEDGE ===\n\n{content}\n\n=== END PATROL SKILL KNOWLEDGE ==="
-
-        # Fallback: also check built-in skills directory
-        builtin_skill = Path(__file__).parent.parent / "skills" / "patrol" / "SKILL.md"
-        if builtin_skill.exists():
-            content = builtin_skill.read_text(encoding="utf-8")
-            return f"=== PATROL SKILL KNOWLEDGE ===\n\n{content}\n\n=== END PATROL SKILL KNOWLEDGE ==="
-
-        return ""

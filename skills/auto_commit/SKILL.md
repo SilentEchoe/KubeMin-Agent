@@ -1,6 +1,9 @@
 ---
 description: Automatically commits code changes to the repository after each feature is implemented
-always: true
+version: "1"
+always: false
+agents: [general]
+triggers: [commit, git push, 提交代码, 自动提交]
 ---
 
 # Auto Commit Policy

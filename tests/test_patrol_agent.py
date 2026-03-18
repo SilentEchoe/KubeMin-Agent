@@ -89,33 +89,20 @@ class TestPatrolAgentSkills:
         prompt = patrol_agent.system_prompt
         assert "PatrolAgent" in prompt
 
-    def test_system_prompt_contains_skill_knowledge(self, patrol_agent: PatrolAgent) -> None:
-        prompt = patrol_agent.system_prompt
-        assert "PATROL SKILL KNOWLEDGE" in prompt
-
-    def test_system_prompt_contains_strategy(self, patrol_agent: PatrolAgent) -> None:
-        prompt = patrol_agent.system_prompt
-        assert "STRATEGY" in prompt
-
     def test_system_prompt_contains_readonly_constraint(self, patrol_agent: PatrolAgent) -> None:
         prompt = patrol_agent.system_prompt
         assert "READ-ONLY" in prompt
 
-    def test_system_prompt_contains_report_template(self, patrol_agent: PatrolAgent) -> None:
-        prompt = patrol_agent.system_prompt
-        assert "巡检报告" in prompt
-
-    def test_system_prompt_contains_health_score(self, patrol_agent: PatrolAgent) -> None:
-        prompt = patrol_agent.system_prompt
-        assert "健康评分" in prompt
-
-    def test_system_prompt_contains_kubemin_platform_strategy(self, patrol_agent: PatrolAgent) -> None:
+    def test_system_prompt_mentions_kubemin_platform_strategy(self, patrol_agent: PatrolAgent) -> None:
         prompt = patrol_agent.system_prompt
         assert "kubemin-cli" in prompt.lower() or "kubemin_cli" in prompt.lower()
 
-    def test_system_prompt_mentions_kubemin_cli_tool(self, patrol_agent: PatrolAgent) -> None:
-        prompt = patrol_agent.system_prompt
-        assert "kubemin_cli" in prompt
+    def test_active_prompt_contains_patrol_skill(self, patrol_agent: PatrolAgent) -> None:
+        prompt = patrol_agent._build_system_prompt_with_skills("执行平台巡检并生成日报")
+        assert "=== ACTIVE SKILLS ===" in prompt
+        assert "### Skill: patrol" in prompt
+        assert "STRATEGY 1" in prompt
+        assert "健康评分" in prompt
 
 
 class TestPatrolConfig:

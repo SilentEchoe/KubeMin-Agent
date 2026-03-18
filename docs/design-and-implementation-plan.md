@@ -64,6 +64,18 @@
   - 新增配置联动：`memory_backend` / `memory_top_k` / `memory_context_max_chars`
   - `ControlPlaneRuntime.from_config()` 已将记忆策略下发到默认子 Agent
 
+### 0.6 增量更新（2026-03-18）
+
+新增“Skill 运行时统一接入与规范化”能力：
+
+- `BaseAgent.run()` 已接入统一 Skill 注入，不再仅依赖 `PatrolAgent` 特例加载
+- `SkillsLoader` 支持 `agents/triggers/version` 元数据，按 Agent 与任务意图选择 Skill
+- 新增内置 Skill：
+  - `k8s-diagnosis`
+  - `workflow-authoring`
+  - `orchestrator-delegation`
+- 新增 Skill 规范文档：`docs/skills-spec.md`
+
 ---
 
 ## 1. 项目定位与目标

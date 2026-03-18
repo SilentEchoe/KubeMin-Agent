@@ -11,6 +11,7 @@ from typing import Any
 from loguru import logger
 
 from kubemin_agent.agent.memory import MemoryStore
+from kubemin_agent.agent.skills import SkillsLoader
 from kubemin_agent.agent.tools.registry import ToolRegistry
 from kubemin_agent.providers.base import LLMProvider
 from kubemin_agent.session.manager import SessionManager
@@ -64,6 +65,7 @@ class BaseAgent(ABC):
         self._trace_events: list[dict[str, Any]] = []
         self._trace_step_index = 0
         self._memory = self._init_memory_store(memory_backend)
+        self._skills = SkillsLoader(self._workspace)
         self.tools = ToolRegistry()
         self._register_tools()
 
@@ -131,6 +133,7 @@ class BaseAgent(ABC):
         history = self.sessions.get_history(session_key)
         self._trace_events = []
         self._trace_step_index = 0
+        system_prompt = self._build_system_prompt_with_skills(message)
         task_anchor = self._build_task_anchor(message)
         shared_context = self._render_shared_context(context_envelope)
         memory_context = await self._load_memory_context(query=message)
@@ -138,11 +141,12 @@ class BaseAgent(ABC):
         selected_history = self._select_history_for_budget(
             history=history,
             task_message=message,
+            system_prompt=system_prompt,
             task_anchor=task_anchor,
             extra_sections=extra_sections,
         )
 
-        messages: list[dict[str, Any]] = [{"role": "system", "content": self.system_prompt}]
+        messages: list[dict[str, Any]] = [{"role": "system", "content": system_prompt}]
         messages.append({"role": "system", "content": task_anchor})
         if shared_context:
             messages.append({"role": "system", "content": shared_context})
@@ -260,6 +264,29 @@ class BaseAgent(ABC):
             "- Final response must directly answer this objective."
         )
 
+    def _build_system_prompt_with_skills(self, task_message: str) -> str:
+        """Build system prompt with agent-applicable skill content."""
+        base_prompt = self.system_prompt
+        try:
+            self._skills = SkillsLoader(self._workspace)
+            selected = self._skills.get_applicable_skills(
+                agent_name=self.name,
+                message=task_message,
+            )
+            skills_block = self._skills.load_skills_for_context(selected)
+            if not skills_block:
+                return base_prompt
+
+            return (
+                f"{base_prompt}\n\n"
+                "=== ACTIVE SKILLS ===\n\n"
+                f"{skills_block}\n\n"
+                "=== END ACTIVE SKILLS ==="
+            )
+        except Exception as e:  # noqa: BLE001
+            logger.warning(f"[{self.name}] Failed to load skills: {e}")
+            return base_prompt
+
     def _build_anchor_reminder(self, task_message: str) -> str:
         """Build a compact objective reminder for each reasoning iteration."""
         objective = self._compact_text(task_message.strip(), 220)
@@ -274,12 +301,13 @@ class BaseAgent(ABC):
         *,
         history: list[dict[str, Any]],
         task_message: str,
+        system_prompt: str,
         task_anchor: str,
         extra_sections: list[str] | None = None,
     ) -> list[dict[str, Any]]:
         """Select recent history with token budgeting instead of fixed window size."""
         base_tokens = (
-            self._estimate_tokens(self.system_prompt)
+            self._estimate_tokens(system_prompt)
             + self._estimate_tokens(task_anchor)
             + self._estimate_tokens(task_message)
             + 256

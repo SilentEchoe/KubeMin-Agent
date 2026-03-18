@@ -54,7 +54,7 @@
 | 对话历史 | token 预算裁剪 + 最近消息兜底 | `kubemin_agent/agents/base.py`, `agent/context.py` |
 | 任务目标 | `TASK ANCHOR` + 每轮 `TASK REMINDER` | `kubemin_agent/agents/base.py`, `agent/context.py` |
 | 记忆 | `MemoryStore.get_context(top_k=5)` | `kubemin_agent/agent/context.py`, `agent/memory/store.py` |
-| Skills | always skill 全量 + 其他摘要 | `kubemin_agent/agent/skills.py` |
+| Skills | 按 `agents/triggers/always` 选择性注入（Control Plane + legacy） | `kubemin_agent/agent/skills.py`, `agents/base.py` |
 | Browser snapshot | 4000 字符截断 | `kubemin_agent/agent/tools/browser.py` |
 | Content audit text/console | 1000 字符预览截断 | `kubemin_agent/agent/tools/content_audit.py` |
 
