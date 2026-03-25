@@ -445,9 +445,11 @@ class Scheduler:
         """
         if not plan.tasks:
             return "Error: Dispatch plan is empty"
-            
+
         # Initialize the active plan document
         self.sessions.init_active_plan_doc(session_key, original_message, plan.tasks)
+        plan_path = self.sessions.get_active_plan_doc_path(session_key)
+        active_plan_text = plan_path.read_text(encoding="utf-8") if plan_path else ""
 
         index_map = {task.task_id: idx for idx, task in enumerate(plan.tasks)}
         remaining = {task.task_id: task for task in plan.tasks}
@@ -481,7 +483,7 @@ class Scheduler:
                 break
 
             if plan.execution_mode == "parallel":
-                failed_in_round = await self._execute_parallel_round(
+                failed_in_round, active_plan_text = await self._execute_parallel_round(
                     ready=ready,
                     remaining=remaining,
                     completed=completed,
@@ -491,6 +493,7 @@ class Scheduler:
                     original_message=original_message,
                     session_key=session_key,
                     request_id=request_id,
+                    active_plan_text=active_plan_text,
                 )
                 if self.fail_fast and failed_in_round:
                     stopped_by_fail_fast = True
@@ -498,14 +501,15 @@ class Scheduler:
                 continue
 
             task = ready[0]
-            
+
             # Mark task in progress
-            self.sessions.update_active_plan_task_status(session_key, task.task_id, "[-]")
-            
-            # Read active plan content
-            plan_path = self.sessions.get_active_plan_doc_path(session_key)
-            active_plan_text = plan_path.read_text(encoding="utf-8") if plan_path else "" 
-            
+            active_plan_text = self.sessions.update_active_plan_task_status(
+                session_key,
+                task.task_id,
+                "[-]",
+                existing_content=active_plan_text,
+            )
+
             context_envelope = context_store.build_envelope(
                 task_id=task.task_id,
                 agent_name=task.agent_name,
@@ -525,11 +529,17 @@ class Scheduler:
             execution_order.append(task.task_id)
             remaining.pop(task.task_id, None)
             completed.add(task.task_id)
-            
+
             # Get summary and update task as completed
             summary_text = context_store._summarize_result(task_result.content)
-            self.sessions.update_active_plan_task_status(session_key, task.task_id, "[x]", summary_text)
-            
+            active_plan_text = self.sessions.update_active_plan_task_status(
+                session_key,
+                task.task_id,
+                "[x]",
+                summary_text,
+                existing_content=active_plan_text,
+            )
+
             context_store.add_result(
                 task_id=task.task_id,
                 agent_name=task_result.agent_name or task.agent_name,
@@ -542,13 +552,13 @@ class Scheduler:
 
         # Generate final execution report via LLM
         raw_results_prompt = f"Original Objective: {original_message}\n\nTask Results:\n"
-        
+
         for task_id in execution_order:
             if task_id in results:
                 res = results[task_id]
                 status = "FAILED" if res.failed else "SUCCESS"
                 raw_results_prompt += f"--- Task {task_id} ({res.agent_name}) [{status}] ---\n{res.content}\n\n"
-                
+
         if stopped_by_fail_fast and remaining:
             skipped = ", ".join(sorted(remaining.keys()))
             raw_results_prompt += f"--- Skipped Tasks ---\n{skipped} (due to fail_fast)\n\n"
@@ -590,21 +600,23 @@ class Scheduler:
         original_message: str,
         session_key: str,
         request_id: str,
-    ) -> bool:
+        active_plan_text: str,
+    ) -> tuple[bool, str]:
         """Execute one dependency-resolved round in parallel."""
         failed_in_round = False
 
         for i in range(0, len(ready), self.max_parallelism):
             chunk = ready[i : i + self.max_parallelism]
-            
-            # Read active plan content (once for the round)
-            plan_path = self.sessions.get_active_plan_doc_path(session_key)
-            active_plan_text = plan_path.read_text(encoding="utf-8") if plan_path else "" 
 
             # Mark tasks in progress
             for task in chunk:
-                self.sessions.update_active_plan_task_status(session_key, task.task_id, "[-]")
-                
+                active_plan_text = self.sessions.update_active_plan_task_status(
+                    session_key,
+                    task.task_id,
+                    "[-]",
+                    existing_content=active_plan_text,
+                )
+
             envelopes = {
                 task.task_id: context_store.build_envelope(
                     task_id=task.task_id,
@@ -634,11 +646,17 @@ class Scheduler:
                 execution_order.append(task.task_id)
                 remaining.pop(task.task_id, None)
                 completed.add(task.task_id)
-                
+
                 # Get summary and update task as completed
                 summary_text = context_store._summarize_result(task_result.content)
-                self.sessions.update_active_plan_task_status(session_key, task.task_id, "[x]", summary_text)
-                
+                active_plan_text = self.sessions.update_active_plan_task_status(
+                    session_key,
+                    task.task_id,
+                    "[x]",
+                    summary_text,
+                    existing_content=active_plan_text,
+                )
+
                 context_store.add_result(
                     task_id=task.task_id,
                     agent_name=task_result.agent_name or task.agent_name,
@@ -647,9 +665,9 @@ class Scheduler:
                 failed_in_round = failed_in_round or task_result.failed
 
             if self.fail_fast and failed_in_round:
-                return True
+                return True, active_plan_text
 
-        return failed_in_round
+        return failed_in_round, active_plan_text
 
     async def _execute_task(
         self,

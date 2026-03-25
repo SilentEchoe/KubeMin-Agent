@@ -277,3 +277,39 @@ async def test_scheduler_passes_dependency_context_envelope(tmp_path: Path) -> N
     assert "[SHARED TASK CONTEXT]" in prompt
     assert "t1" in prompt
     assert "collect cluster status" in prompt or "general:collect cluster status" in prompt
+
+
+@pytest.mark.asyncio
+async def test_scheduler_reads_active_plan_once_per_execution(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    scheduler, registry = _build_scheduler(tmp_path)
+    registry.register(StubAgent("general"))
+
+    plan = DispatchPlan(
+        tasks=[
+            SubTask(task_id="t1", agent_name="general", description="step-1"),
+            SubTask(task_id="t2", agent_name="general", description="step-2"),
+        ],
+        execution_mode="sequential",
+    )
+
+    original_read_text = Path.read_text
+    read_count = 0
+
+    def _counting_read_text(self: Path, *args, **kwargs) -> str:  # noqa: ANN002, ANN003
+        nonlocal read_count
+        if self.name.endswith(".active_plan.md"):
+            read_count += 1
+        return original_read_text(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", _counting_read_text)
+
+    await scheduler.execute_plan(
+        plan=plan,
+        original_message="two-step task",
+        session_key="cli:test_plan_io",
+        request_id="req-plan-io",
+    )
+    assert read_count == 1

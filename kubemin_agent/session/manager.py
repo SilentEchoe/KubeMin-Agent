@@ -157,13 +157,20 @@ class SessionManager:
         path.write_text("\n".join(lines), encoding="utf-8")
         return path
 
-    def update_active_plan_task_status(self, session_key: str, task_id: str, status: str, result_summary: str = "") -> None:
+    def update_active_plan_task_status(
+        self,
+        session_key: str,
+        task_id: str,
+        status: str,
+        result_summary: str = "",
+        existing_content: str | None = None,
+    ) -> str:
         """Update a task's status in the active plan document. Status: '[-]' or '[x]'."""
         path = self._active_plan_doc_path(session_key)
         if not path.exists():
-            return
+            return existing_content or ""
 
-        content = path.read_text(encoding="utf-8")
+        content = existing_content if existing_content is not None else path.read_text(encoding="utf-8")
         lines = content.splitlines()
 
         for i, line in enumerate(lines):
@@ -179,7 +186,9 @@ class SessionManager:
                 lines[i] = new_line
                 break
 
-        path.write_text("\n".join(lines), encoding="utf-8")
+        updated_content = "\n".join(lines)
+        path.write_text(updated_content, encoding="utf-8")
+        return updated_content
 
     def get_active_plan_doc_path(self, session_key: str) -> Path | None:
         """Get the path to the active plan doc if it exists."""
