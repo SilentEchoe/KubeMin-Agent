@@ -56,6 +56,7 @@ class ControlPlaneRuntime:
         orchestration_mode: str = "orchestrated",
         exec_timeout: int = 30,
         exec_restrict_to_workspace: bool = False,
+        exec_strict_path_guard: bool = True,
         exec_sandbox_mode: str = "off",
         exec_sandbox_runtime: str = "auto",
         exec_sandbox_allow_network: bool = False,
@@ -116,7 +117,8 @@ class ControlPlaneRuntime:
         self.kubemin_namespace = kubemin_namespace
         self.exec_tool_config = {
             "default_timeout": exec_timeout,
-            "restrict_to_workspace": exec_restrict_to_workspace,
+            "restrict_to_workspace": exec_restrict_to_workspace or exec_strict_path_guard,
+            "strict_path_guard": exec_strict_path_guard,
             "sandbox_mode": exec_sandbox_mode,
             "sandbox_runtime": exec_sandbox_runtime,
             "sandbox_allow_network": exec_sandbox_allow_network,
@@ -163,6 +165,7 @@ class ControlPlaneRuntime:
             orchestration_mode=config.control.orchestration_mode,
             exec_timeout=config.tools.exec.timeout,
             exec_restrict_to_workspace=config.tools.exec.restrict_to_workspace,
+            exec_strict_path_guard=config.tools.exec.strict_path_guard,
             exec_sandbox_mode=exec_sandbox_mode,
             exec_sandbox_runtime=config.tools.exec.sandbox_runtime,
             exec_sandbox_allow_network=config.tools.exec.sandbox_allow_network,

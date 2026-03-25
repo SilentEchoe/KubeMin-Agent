@@ -98,6 +98,7 @@ class ExecToolConfig(BaseModel):
 
     timeout: int = 30
     restrict_to_workspace: bool = False
+    strict_path_guard: bool = True
     sandbox_mode: Literal["off", "best_effort", "strict"] = "off"
     sandbox_runtime: Literal["auto", "bwrap"] = "auto"
     sandbox_allow_network: bool = False

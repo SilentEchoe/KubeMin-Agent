@@ -224,3 +224,19 @@ async def test_execute_workspace_restriction_sets_cwd(tmp_path: Path, monkeypatc
     assert len(calls) == 1
     _args, called_kwargs = calls[0]
     assert called_kwargs["cwd"] == str(tmp_path.resolve())
+
+
+def test_strict_path_guard_blocks_out_of_workspace_paths(tmp_path: Path):
+    tool = ShellTool(workspace=tmp_path, strict_path_guard=True)
+    assert "strict_path_guard" in (tool._check_safety("cat /etc/hosts") or "")
+    assert "strict_path_guard" in (tool._check_safety("cat ../secret.txt") or "")
+
+
+def test_strict_path_guard_allows_workspace_relative_paths(tmp_path: Path):
+    tool = ShellTool(workspace=tmp_path, strict_path_guard=True)
+    assert tool._check_safety("cat ./notes.txt") is None
+
+
+def test_strict_path_guard_can_be_disabled(tmp_path: Path):
+    tool = ShellTool(workspace=tmp_path, strict_path_guard=False)
+    assert tool._check_safety("cat /etc/hosts") is None

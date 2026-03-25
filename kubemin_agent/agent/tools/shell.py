@@ -62,13 +62,17 @@ class ShellTool(Tool):
         workspace: Path | None = None,
         default_timeout: int = DEFAULT_TIMEOUT,
         restrict_to_workspace: bool = False,
+        strict_path_guard: bool = True,
         sandbox_mode: str = "off",
         sandbox_runtime: str = "auto",
         sandbox_allow_network: bool = False,
     ) -> None:
         self._workspace = workspace.resolve() if workspace else None
         self._default_timeout = min(max(default_timeout, 1), 120)
-        self._restrict_to_workspace = restrict_to_workspace and self._workspace is not None
+        self._strict_path_guard = strict_path_guard and self._workspace is not None
+        self._restrict_to_workspace = (
+            restrict_to_workspace or self._strict_path_guard
+        ) and self._workspace is not None
         self._sandbox_mode = self._normalize_mode(sandbox_mode)
         self._sandbox_runtime = self._normalize_runtime(sandbox_runtime)
         self._sandbox_runner = SandboxRunner(
@@ -187,7 +191,64 @@ class ShellTool(Tool):
                 f"Allowed: {', '.join(sorted(_ALLOWED_COMMANDS))}"
             )
 
+        if self._strict_path_guard:
+            path_guard_error = self._check_path_guard(parts)
+            if path_guard_error:
+                return path_guard_error
+
         return None
+
+    def _check_path_guard(self, parts: list[str]) -> str | None:
+        """Block path arguments that escape the configured workspace root."""
+        if not self._workspace or len(parts) <= 1:
+            return None
+
+        workspace_root = self._workspace.resolve()
+        redirection_ops = {">", ">>", "<", "1>", "2>", "2>>"}
+        candidates: list[str] = []
+
+        for index, token in enumerate(parts[1:], start=1):
+            if token in redirection_ops:
+                if index + 1 < len(parts):
+                    candidates.append(parts[index + 1])
+                continue
+            if token.startswith("--") and "=" in token:
+                _flag, value = token.split("=", 1)
+                candidates.append(value)
+                continue
+            if token.startswith("-"):
+                continue
+            candidates.append(token)
+
+        for raw_token in candidates:
+            if not self._looks_like_path(raw_token):
+                continue
+            token = raw_token.strip()
+            path = Path(token).expanduser()
+            if not path.is_absolute():
+                path = workspace_root / path
+            resolved = path.resolve()
+            if not resolved.is_relative_to(workspace_root):
+                return (
+                    "Error: command blocked by strict_path_guard. "
+                    f"Path '{raw_token}' resolves outside workspace '{workspace_root}'."
+                )
+        return None
+
+    @staticmethod
+    def _looks_like_path(token: str) -> bool:
+        normalized = token.strip()
+        if not normalized or normalized == "-":
+            return False
+        if "://" in normalized:
+            return False
+        if normalized.startswith("$"):
+            return False
+        if normalized in {".", ".."}:
+            return True
+        if normalized.startswith(("/", "./", "../", "~/")):
+            return True
+        return "/" in normalized
 
     @staticmethod
     def _normalize_mode(mode: str) -> str:
