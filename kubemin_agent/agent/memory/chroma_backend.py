@@ -19,7 +19,7 @@ class ChromaDBBackend(MemoryBackend):
     by embedding memory contents and performing vector similarity search.
     """
 
-    def __init__(self, memory_dir: Path) -> None:
+    def __init__(self, memory_dir: Path, embedding_function: Any | None = None) -> None:
         """
         Initialize the ChromaDB backend.
 
@@ -47,10 +47,14 @@ class ChromaDBBackend(MemoryBackend):
         )
 
         # Get or create the main memory collection
-        self._collection = self._client.get_or_create_collection(
-            name="agent_memory",
-            metadata={"description": "KubeMin Agent memory collection"},
-        )
+        collection_kwargs: dict[str, Any] = {
+            "name": "agent_memory",
+            "metadata": {"description": "KubeMin Agent memory collection"},
+        }
+        if embedding_function is not None:
+            collection_kwargs["embedding_function"] = embedding_function
+
+        self._collection = self._client.get_or_create_collection(**collection_kwargs)
 
     async def store(self, entry: MemoryEntry) -> str:
         """Store a memory entry in ChromaDB."""

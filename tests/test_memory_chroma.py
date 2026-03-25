@@ -8,6 +8,47 @@ from kubemin_agent.agent.memory.chroma_backend import ChromaDBBackend
 from kubemin_agent.agent.memory.entry import MemoryEntry
 
 
+class _DeterministicEmbedding:
+    """Simple stable embedding function for tests to avoid ONNX runtime dependency."""
+
+    def __call__(self, input):
+        texts = [input] if isinstance(input, str) else list(input)
+        return [self._embed(text) for text in texts]
+
+    @staticmethod
+    def _embed(text: str) -> list[float]:
+        lowered = text.lower()
+
+        infrastructure_terms = (
+            "cluster",
+            "k8s",
+            "server",
+            "servers",
+            "node",
+            "nodes",
+            "worker",
+        )
+        nginx_terms = ("nginx",)
+        failure_terms = ("crashloopbackoff", "error", "failed")
+        deploy_terms = ("deploy", "kubectl", "manifest")
+        memory_terms = ("memory", "pressure")
+        color_terms = ("color", "blue")
+
+        def _count(terms: tuple[str, ...]) -> float:
+            return float(sum(1 for term in terms if term in lowered))
+
+        return [
+            _count(infrastructure_terms),
+            _count(nginx_terms),
+            _count(failure_terms),
+            _count(deploy_terms),
+            _count(memory_terms),
+            _count(color_terms),
+            float(len(lowered) / 100.0),
+            float(sum(ord(c) for c in lowered) % 97) / 97.0,
+        ]
+
+
 @pytest.fixture(autouse=True)
 def isolated_chroma_env(tmp_path):
     """Ensure ONNX and Chroma don't clash on default cache dirs during testing."""
@@ -42,7 +83,7 @@ def workspace(tmp_path):
 @pytest.mark.asyncio
 async def test_chroma_backend_crud(workspace):
     """Test Create, Read (list), Delete operations."""
-    backend = ChromaDBBackend(workspace)
+    backend = ChromaDBBackend(workspace, embedding_function=_DeterministicEmbedding())
 
     # List empty
     entries = await backend.list_all()
@@ -79,7 +120,7 @@ async def test_chroma_backend_crud(workspace):
 @pytest.mark.asyncio
 async def test_chroma_backend_search(workspace):
     """Test semantic search."""
-    backend = ChromaDBBackend(workspace)
+    backend = ChromaDBBackend(workspace, embedding_function=_DeterministicEmbedding())
 
     # Store varied content
     docs = [
