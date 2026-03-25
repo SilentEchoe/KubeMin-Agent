@@ -26,6 +26,7 @@ class BaseAgent(ABC):
     """
 
     MAX_ITERATIONS = 20
+    DEFAULT_MAX_TOOL_ITERATIONS = 20
     DEFAULT_MAX_CONTEXT_TOKENS = 6000
     DEFAULT_MIN_RECENT_HISTORY_MESSAGES = 4
     DEFAULT_TASK_ANCHOR_MAX_CHARS = 600
@@ -47,6 +48,7 @@ class BaseAgent(ABC):
         memory_backend: str = DEFAULT_MEMORY_BACKEND,
         memory_top_k: int = DEFAULT_MEMORY_TOP_K,
         memory_context_max_chars: int = DEFAULT_MEMORY_CONTEXT_MAX_CHARS,
+        max_tool_iterations: int = DEFAULT_MAX_TOOL_ITERATIONS,
         exec_tool_config: dict[str, Any] | None = None,
     ) -> None:
         self.provider = provider
@@ -60,6 +62,7 @@ class BaseAgent(ABC):
         self._memory_backend = memory_backend
         self._memory_top_k = max(0, memory_top_k)
         self._memory_context_max_chars = max(240, memory_context_max_chars)
+        self._max_tool_iterations = max(1, max_tool_iterations)
         self._exec_tool_config = dict(exec_tool_config or {})
         self._trace_task_id = ""
         self._trace_capture_enabled = True
@@ -171,7 +174,7 @@ class BaseAgent(ABC):
             request_id=request_id,
         )
 
-        for _ in range(self.MAX_ITERATIONS):
+        for _ in range(self._max_tool_iterations):
             tool_defs = self.tools.get_definitions() if len(self.tools) > 0 else None
 
             response = await self.provider.chat(

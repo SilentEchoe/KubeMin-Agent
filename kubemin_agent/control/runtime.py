@@ -43,6 +43,7 @@ class ControlPlaneRuntime:
         memory_backend: str = "file",
         memory_top_k: int = 5,
         memory_context_max_chars: int = 1400,
+        max_tool_iterations: int = 20,
         evaluation_enabled: bool = True,
         evaluation_warn_threshold: int = 60,
         evaluation_llm_judge_enabled: bool = True,
@@ -69,6 +70,7 @@ class ControlPlaneRuntime:
         self.memory_backend = memory_backend
         self.memory_top_k = memory_top_k
         self.memory_context_max_chars = memory_context_max_chars
+        self.max_tool_iterations = max(1, max_tool_iterations)
 
         self.sessions = SessionManager(workspace)
         self.audit = AuditLog(workspace.parent)
@@ -135,6 +137,7 @@ class ControlPlaneRuntime:
             memory_backend=config.agents.defaults.memory_backend,
             memory_top_k=config.agents.defaults.memory_top_k,
             memory_context_max_chars=config.agents.defaults.memory_context_max_chars,
+            max_tool_iterations=config.agents.defaults.max_tool_iterations,
             evaluation_enabled=config.evaluation.enabled,
             evaluation_warn_threshold=config.evaluation.warn_threshold,
             evaluation_llm_judge_enabled=config.evaluation.llm_judge_enabled,
@@ -164,6 +167,7 @@ class ControlPlaneRuntime:
             "memory_backend": self.memory_backend,
             "memory_top_k": self.memory_top_k,
             "memory_context_max_chars": self.memory_context_max_chars,
+            "max_tool_iterations": self.max_tool_iterations,
             "exec_tool_config": self.exec_tool_config,
         }
         self.registry.register(

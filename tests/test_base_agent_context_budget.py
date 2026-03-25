@@ -9,7 +9,7 @@ import pytest
 
 from kubemin_agent.agents.base import BaseAgent
 from kubemin_agent.control.agent_context import ContextEnvelope, ContextFinding
-from kubemin_agent.providers.base import LLMProvider, LLMResponse
+from kubemin_agent.providers.base import LLMProvider, LLMResponse, ToolCallRequest
 from kubemin_agent.session.manager import SessionManager
 
 
@@ -45,6 +45,24 @@ class DummyAgent(BaseAgent):
 
     def _register_tools(self) -> None:
         return
+
+
+class LoopingToolProvider(LLMProvider):
+    """Always emits tool calls to exercise max tool iteration boundary."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.calls = 0
+
+    async def chat(self, messages, tools=None, model=None, max_tokens=4096, temperature=0.7):  # type: ignore[override]
+        self.calls += 1
+        return LLMResponse(
+            content="",
+            tool_calls=[ToolCallRequest(id=f"tc-{self.calls}", name="unknown_tool", arguments={})],
+        )
+
+    def get_default_model(self) -> str:
+        return "stub"
 
 
 def _build_history(sessions: SessionManager, session_key: str, turns: int = 12) -> None:
@@ -189,3 +207,22 @@ async def test_base_agent_injects_shared_context_envelope(tmp_path: Path) -> Non
     ]
     assert shared_messages
     assert "OOMKilled" in shared_messages[0]["content"]
+
+
+@pytest.mark.asyncio
+async def test_base_agent_uses_configured_max_tool_iterations(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir(parents=True, exist_ok=True)
+    session_key = "cli:test_max_tool_iterations"
+    sessions = SessionManager(workspace)
+    provider = LoopingToolProvider()
+    agent = DummyAgent(
+        provider=provider,
+        sessions=sessions,
+        workspace=workspace,
+        max_tool_iterations=2,
+    )
+
+    result = await agent.run("持续执行工具调用直到达到迭代上限", session_key=session_key)
+    assert result == "Reached maximum tool iterations. Please try a simpler request."
+    assert provider.calls == 2

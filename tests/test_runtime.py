@@ -60,6 +60,7 @@ def test_runtime_from_config_applies_context_budget_to_agents(tmp_path: Path) ->
     config.agents.defaults.memory_backend = "jsonl"
     config.agents.defaults.memory_top_k = 3
     config.agents.defaults.memory_context_max_chars = 1000
+    config.agents.defaults.max_tool_iterations = 7
 
     runtime = ControlPlaneRuntime.from_config(config, RoutingProvider(), workspace)
     general = runtime.registry.get("general")
@@ -71,6 +72,7 @@ def test_runtime_from_config_applies_context_budget_to_agents(tmp_path: Path) ->
     assert general._memory_backend == "jsonl"
     assert general._memory_top_k == 3
     assert general._memory_context_max_chars == 1000
+    assert general._max_tool_iterations == 7
 
 
 def test_runtime_from_config_applies_exec_sandbox_config(tmp_path: Path) -> None:
