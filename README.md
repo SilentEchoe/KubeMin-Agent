@@ -44,7 +44,7 @@ kubemin-agent onboard
 
 ### 3. 配置 LLM Provider
 
-编辑 `~/.kubemin-agent/config.yaml`，在 `providers` 下填写你的 API Key。
+编辑 `~/.kubemin-agent/config.json`，在 `providers` 下填写你的 API Key。
 
 #### 使用 Anthropic Claude（默认）
 

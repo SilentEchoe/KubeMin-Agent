@@ -218,26 +218,28 @@ kubemin_agent/
 ├── agent/              # Agent 运行时基础设施
 │   ├── loop.py         #    AgentLoop（单 Agent 执行循环）
 │   ├── context.py      #    上下文管理
-│   ├── memory.py       #    MemoryStore
+│   ├── subagent.py     #    SubagentManager（兼容链路）
+│   ├── memory/         #    MemoryStore + 可插拔后端（file/jsonl/chroma）
 │   ├── skills.py       #    SkillsLoader
 │   └── tools/          #    工具系统
 │       ├── base.py     #    Tool 抽象基类
 │       ├── registry.py #    ToolRegistry
 │       ├── filesystem.py  # 文件操作
 │       ├── shell.py    #    命令执行
-│       ├── web.py      #    Web 搜索/抓取
 │       ├── kubectl.py  #    K8s 资源查询
-│       └── workflow.py #    工作流操作
+│       ├── kubemin_cli.py  # KubeMin 平台只读查询
+│       └── yaml_validator.py # Workflow YAML 校验
 ├── providers/          # LLM Provider 抽象
 │   ├── base.py         #    LLMProvider / LLMResponse / ToolCallRequest
 │   └── litellm_provider.py  # LiteLLM 统一网关
 ├── bus/                # 消息路由
-│   ├── events.py       #    InboundMessage / OutboundMessage / AgentMessage
+│   ├── events.py       #    InboundMessage / OutboundMessage
 │   └── queue.py        #    MessageBus 异步队列
 ├── channels/           # 通道接入
 │   ├── base.py         #    BaseChannel 抽象
 │   ├── manager.py      #    ChannelManager
-│   └── telegram.py     #    Telegram 通道
+│   ├── telegram.py     #    Telegram 通道
+│   └── feishu.py       #    飞书通道
 ├── session/            # 会话管理
 │   └── manager.py      #    JSONL 持久化
 ├── config/             # 配置

@@ -16,8 +16,9 @@ GeneralAgent (extends BaseAgent)
   |
   +-- system_prompt: 通用助手 + 安全约束
   +-- ToolRegistry
-       +-- FilesystemTool  (规划中: 文件读写)
-       +-- ShellTool       (规划中: 安全 Shell 执行)
+       +-- ReadFileTool    (已实现: 文件读取)
+       +-- WriteFileTool   (已实现: 文件写入)
+       +-- ShellTool       (已实现: 安全 Shell 执行)
        +-- WebSearchTool   (规划中: 网络搜索)
 ```
 

@@ -17,7 +17,7 @@ WorkflowAgent (extends BaseAgent)
   +-- system_prompt: KubeMin Workflow 规范专家
   +-- ToolRegistry
        +-- WorkflowCRUDTool    (规划中: 创建/读取/更新 Workflow)
-       +-- WorkflowValidateTool(规划中: YAML 校验)
+       +-- YAMLValidatorTool   (已实现: YAML 语法与结构校验)
 ```
 
 调度路径:
@@ -37,7 +37,7 @@ WorkflowAgent (extends BaseAgent)
 | 查询驱动记忆注入 | 已实现 | 按当前任务 query 召回 MemoryStore 并注入上下文 |
 | 自然语言生成 Workflow YAML | 已实现 | 通过 LLM 将用户描述转为 YAML |
 | 步骤依赖优化 | 已实现 | 自动分析和优化步骤执行顺序 |
-| YAML 校验 | 规划中 | 结构性校验 Workflow 配置 |
+| YAML 校验 | 已实现 | 使用 YAMLValidatorTool 校验语法与结构（apiVersion/kind/metadata/spec/components） |
 | 执行状态监控 | 规划中 | 查看 Workflow 执行进度 |
 | 失败根因分析 | 规划中 | 分析 Workflow 执行失败原因 |
 | Trait 配置 (Scaling/Ingress) | 已实现 | system prompt 中包含 Trait 配置指导 |

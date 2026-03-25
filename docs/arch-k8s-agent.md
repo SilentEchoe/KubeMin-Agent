@@ -16,7 +16,7 @@ K8sAgent (extends BaseAgent)
   |
   +-- system_prompt: 只读约束 + K8s 专业知识
   +-- ToolRegistry
-       +-- KubectlTool     (规划中: kubectl get/describe/logs)
+       +-- KubectlTool     (已实现: kubectl get/describe/logs/top/explain)
        +-- KubeMinAPITool  (规划中: KubeMin 平台 API)
 ```
 
@@ -35,9 +35,9 @@ K8sAgent (extends BaseAgent)
 | 在线质量评估 | 已实现 | Scheduler 执行后写入 `evaluation` 审计事件 |
 | 跨任务上下文继承 | 已实现 | 支持接收 Scheduler 下发的 `ContextEnvelope`，复用依赖任务发现 |
 | 查询驱动记忆注入 | 已实现 | 按当前任务 query 召回 MemoryStore 并注入上下文 |
-| 集群资源查询 | 规划中 | 查询 Pod/Deployment/Service 等资源状态 |
-| 容器日志查看 | 规划中 | 按 Pod/Container 查看日志 |
-| 故障诊断 | 规划中 | 分析 Pod 状态异常、重启原因等 |
+| 集群资源查询 | 已实现（基础） | 通过 KubectlTool 查询 Pod/Deployment/Service 等资源状态 |
+| 容器日志查看 | 已实现（基础） | 支持 `kubectl logs` 只读日志查看 |
+| 故障诊断 | 已实现（基础） | 基于 `get/describe/logs/top` 提供只读诊断分析 |
 | K8s 概念解答 | 已实现 | 通过 system prompt 提供 K8s 知识问答 |
 
 ## 安全约束
