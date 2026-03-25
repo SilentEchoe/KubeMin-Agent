@@ -5,9 +5,15 @@ from __future__ import annotations
 import asyncio
 import re
 import shlex
+from pathlib import Path
 from typing import Any
 
 from kubemin_agent.agent.tools.base import Tool
+from kubemin_agent.agent.tools.sandbox import (
+    SandboxPolicy,
+    SandboxRunner,
+    SandboxUnavailableError,
+)
 
 # Whitelisted command prefixes
 _ALLOWED_COMMANDS = {
@@ -51,6 +57,29 @@ DEFAULT_TIMEOUT = 30
 class ShellTool(Tool):
     """Execute shell commands with safety constraints."""
 
+    def __init__(
+        self,
+        workspace: Path | None = None,
+        default_timeout: int = DEFAULT_TIMEOUT,
+        restrict_to_workspace: bool = False,
+        sandbox_mode: str = "off",
+        sandbox_runtime: str = "auto",
+        sandbox_allow_network: bool = False,
+    ) -> None:
+        self._workspace = workspace.resolve() if workspace else None
+        self._default_timeout = min(max(default_timeout, 1), 120)
+        self._restrict_to_workspace = restrict_to_workspace and self._workspace is not None
+        self._sandbox_mode = self._normalize_mode(sandbox_mode)
+        self._sandbox_runtime = self._normalize_runtime(sandbox_runtime)
+        self._sandbox_runner = SandboxRunner(
+            workspace=self._workspace or Path.cwd(),
+            policy=SandboxPolicy(
+                mode=self._sandbox_mode,
+                runtime=self._sandbox_runtime,
+                allow_network=sandbox_allow_network,
+            ),
+        )
+
     @property
     def name(self) -> str:
         return "run_command"
@@ -74,14 +103,16 @@ class ShellTool(Tool):
                 },
                 "timeout": {
                     "type": "integer",
-                    "description": "Timeout in seconds (default 30, max 120).",
+                    "description": (
+                        "Timeout in seconds (defaults to tool config, max 120)."
+                    ),
                 },
             },
             "required": ["command"],
         }
 
-    async def execute(self, *, command: str, timeout: int = DEFAULT_TIMEOUT) -> str:
-        timeout = min(max(timeout, 1), 120)
+    async def execute(self, *, command: str, timeout: int | None = None) -> str:
+        timeout = self._default_timeout if timeout is None else min(max(timeout, 1), 120)
 
         # Safety checks
         safety_error = self._check_safety(command)
@@ -89,14 +120,25 @@ class ShellTool(Tool):
             return safety_error
 
         try:
-            proc = await asyncio.create_subprocess_shell(
-                command,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
+            wrapped_cmd = self._sandbox_runner.build_command(command)
+            if wrapped_cmd:
+                proc = await asyncio.create_subprocess_exec(
+                    *wrapped_cmd,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+            else:
+                proc = await asyncio.create_subprocess_shell(
+                    command,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                    cwd=str(self._workspace) if self._restrict_to_workspace else None,
+                )
             stdout, stderr = await asyncio.wait_for(
                 proc.communicate(), timeout=timeout
             )
+        except SandboxUnavailableError as e:
+            return f"Error: {e}"
         except asyncio.TimeoutError:
             proc.kill()
             return f"Error: command timed out after {timeout}s"
@@ -146,3 +188,17 @@ class ShellTool(Tool):
             )
 
         return None
+
+    @staticmethod
+    def _normalize_mode(mode: str) -> str:
+        normalized = mode.strip().lower()
+        if normalized in {"off", "best_effort", "strict"}:
+            return normalized
+        return "off"
+
+    @staticmethod
+    def _normalize_runtime(runtime: str) -> str:
+        normalized = runtime.strip().lower()
+        if normalized in {"auto", "bwrap"}:
+            return normalized
+        return "auto"

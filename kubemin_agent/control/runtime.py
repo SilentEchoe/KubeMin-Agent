@@ -8,6 +8,7 @@ from pathlib import Path
 
 from loguru import logger
 
+from kubemin_agent.agent.tools.delegate import create_delegate_tools
 from kubemin_agent.agents.game_audit_agent import GameAuditAgent
 from kubemin_agent.agents.general_agent import GeneralAgent
 from kubemin_agent.agents.guide_agent import GuideAgent
@@ -15,7 +16,6 @@ from kubemin_agent.agents.k8s_agent import K8sAgent
 from kubemin_agent.agents.orchestrator_agent import OrchestratorAgent
 from kubemin_agent.agents.patrol_agent import PatrolAgent
 from kubemin_agent.agents.workflow_agent import WorkflowAgent
-from kubemin_agent.agent.tools.delegate import create_delegate_tools
 from kubemin_agent.bus.events import OutboundMessage
 from kubemin_agent.bus.queue import MessageBus
 from kubemin_agent.config.schema import Config
@@ -53,6 +53,11 @@ class ControlPlaneRuntime:
         kubemin_api_base: str = "",
         kubemin_namespace: str = "",
         orchestration_mode: str = "orchestrated",
+        exec_timeout: int = 30,
+        exec_restrict_to_workspace: bool = False,
+        exec_sandbox_mode: str = "off",
+        exec_sandbox_runtime: str = "auto",
+        exec_sandbox_allow_network: bool = False,
     ) -> None:
         self.provider = provider
         self.workspace = workspace
@@ -94,6 +99,13 @@ class ControlPlaneRuntime:
         )
         self.kubemin_api_base = kubemin_api_base
         self.kubemin_namespace = kubemin_namespace
+        self.exec_tool_config = {
+            "default_timeout": exec_timeout,
+            "restrict_to_workspace": exec_restrict_to_workspace,
+            "sandbox_mode": exec_sandbox_mode,
+            "sandbox_runtime": exec_sandbox_runtime,
+            "sandbox_allow_network": exec_sandbox_allow_network,
+        }
 
         self._running = False
         self._register_default_agents()
@@ -106,6 +118,12 @@ class ControlPlaneRuntime:
         workspace: Path,
     ) -> "ControlPlaneRuntime":
         """Create a runtime from the root config."""
+        exec_sandbox_mode = config.tools.exec.sandbox_mode
+        if exec_sandbox_mode == "off" and config.sandbox.mode == "strict":
+            # In strict global mode, upgrade tool-level command execution to strict
+            # so the process and tool layers share fail-closed semantics.
+            exec_sandbox_mode = "strict"
+
         return cls(
             provider=provider,
             workspace=workspace,
@@ -127,6 +145,11 @@ class ControlPlaneRuntime:
             kubemin_api_base=config.kubemin.api_base,
             kubemin_namespace=config.kubemin.default_namespace,
             orchestration_mode=config.control.orchestration_mode,
+            exec_timeout=config.tools.exec.timeout,
+            exec_restrict_to_workspace=config.tools.exec.restrict_to_workspace,
+            exec_sandbox_mode=exec_sandbox_mode,
+            exec_sandbox_runtime=config.tools.exec.sandbox_runtime,
+            exec_sandbox_allow_network=config.tools.exec.sandbox_allow_network,
         )
 
     def _register_default_agents(self) -> None:
@@ -141,6 +164,7 @@ class ControlPlaneRuntime:
             "memory_backend": self.memory_backend,
             "memory_top_k": self.memory_top_k,
             "memory_context_max_chars": self.memory_context_max_chars,
+            "exec_tool_config": self.exec_tool_config,
         }
         self.registry.register(
             GeneralAgent(self.provider, self.sessions, **agent_kwargs)

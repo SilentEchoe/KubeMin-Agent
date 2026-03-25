@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Any
 
 from kubemin_agent.agent.tools.delegate import DelegateAgentTool
@@ -94,7 +93,7 @@ class OrchestratorAgent(BaseAgent):
         # Direct tools
         self.tools.register(ReadFileTool(self._workspace))
         self.tools.register(WriteFileTool(self._workspace))
-        self.tools.register(ShellTool())
+        self.tools.register(ShellTool(workspace=self._workspace, **self._exec_tool_config))
         self.tools.register(KubectlTool())
         self.tools.register(YAMLValidatorTool())
 

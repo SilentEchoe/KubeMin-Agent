@@ -1,6 +1,7 @@
 """Tests for Shell tool execution."""
 
-from unittest.mock import AsyncMock, patch
+from pathlib import Path
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
@@ -11,6 +12,19 @@ from kubemin_agent.agent.tools.shell import ShellTool
 def tool():
     """Create a shell tool instance."""
     return ShellTool()
+
+
+class _DummyProcess:
+    def __init__(self, stdout: bytes, stderr: bytes, returncode: int) -> None:
+        self._stdout = stdout
+        self._stderr = stderr
+        self.returncode = returncode
+
+    async def communicate(self) -> tuple[bytes, bytes]:
+        return self._stdout, self._stderr
+
+    def kill(self) -> None:
+        return None
 
 
 @pytest.mark.asyncio
@@ -102,6 +116,7 @@ async def test_execute_timeout(mock_create_proc, mock_wait, tool):
     import asyncio
 
     mock_proc = AsyncMock()
+    mock_proc.kill = Mock()
     mock_create_proc.return_value = mock_proc
     mock_wait.side_effect = asyncio.TimeoutError()
 
@@ -109,3 +124,103 @@ async def test_execute_timeout(mock_create_proc, mock_wait, tool):
 
     assert "timed out after 2s" in result
     mock_proc.kill.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_execute_strict_sandbox_unavailable(
+    tmp_path: Path,
+    monkeypatch,
+):
+    """Strict sandbox should fail closed when runtime is not available."""
+    monkeypatch.setattr("kubemin_agent.agent.tools.sandbox.shutil.which", lambda _: None)
+    tool = ShellTool(
+        workspace=tmp_path,
+        sandbox_mode="strict",
+        sandbox_runtime="bwrap",
+    )
+    result = await tool.execute(command="ls")
+    assert "Sandbox runtime 'bwrap' is not available" in result
+
+
+@pytest.mark.asyncio
+async def test_execute_best_effort_sandbox_fallback(
+    tmp_path: Path,
+    monkeypatch,
+):
+    """Best-effort sandbox should fallback to host shell execution."""
+    monkeypatch.setattr("kubemin_agent.agent.tools.sandbox.shutil.which", lambda _: None)
+    calls: list[tuple[tuple, dict]] = []
+
+    async def _fake_create_subprocess_shell(*args, **kwargs):
+        calls.append((args, kwargs))
+        return _DummyProcess(stdout=b"ok", stderr=b"", returncode=0)
+
+    monkeypatch.setattr(
+        "kubemin_agent.agent.tools.shell.asyncio.create_subprocess_shell",
+        _fake_create_subprocess_shell,
+    )
+
+    tool = ShellTool(
+        workspace=tmp_path,
+        sandbox_mode="best_effort",
+        sandbox_runtime="bwrap",
+    )
+    result = await tool.execute(command="ls")
+    assert "ok" in result
+    assert len(calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_execute_uses_sandbox_runtime(
+    tmp_path: Path,
+    monkeypatch,
+):
+    """When sandbox runtime is available, execute should use subprocess_exec."""
+    monkeypatch.setattr(
+        "kubemin_agent.agent.tools.sandbox.shutil.which",
+        lambda _: "/usr/bin/bwrap",
+    )
+    calls: list[tuple[tuple, dict]] = []
+
+    async def _fake_create_subprocess_exec(*args, **kwargs):
+        calls.append((args, kwargs))
+        return _DummyProcess(stdout=b"sandboxed", stderr=b"", returncode=0)
+
+    monkeypatch.setattr(
+        "kubemin_agent.agent.tools.shell.asyncio.create_subprocess_exec",
+        _fake_create_subprocess_exec,
+    )
+
+    tool = ShellTool(
+        workspace=tmp_path,
+        sandbox_mode="strict",
+        sandbox_runtime="bwrap",
+    )
+    result = await tool.execute(command="echo hi")
+
+    assert "sandboxed" in result
+    assert len(calls) == 1
+    args, _kwargs = calls[0]
+    assert args[0] == "/usr/bin/bwrap"
+
+
+@pytest.mark.asyncio
+async def test_execute_workspace_restriction_sets_cwd(tmp_path: Path, monkeypatch):
+    """Workspace restriction should execute command with workspace cwd."""
+    calls: list[tuple[tuple, dict]] = []
+
+    async def _fake_create_subprocess_shell(*args, **kwargs):
+        calls.append((args, kwargs))
+        return _DummyProcess(stdout=b"ok", stderr=b"", returncode=0)
+
+    monkeypatch.setattr(
+        "kubemin_agent.agent.tools.shell.asyncio.create_subprocess_shell",
+        _fake_create_subprocess_shell,
+    )
+
+    tool = ShellTool(workspace=tmp_path, restrict_to_workspace=True)
+    await tool.execute(command="ls")
+
+    assert len(calls) == 1
+    _args, called_kwargs = calls[0]
+    assert called_kwargs["cwd"] == str(tmp_path.resolve())

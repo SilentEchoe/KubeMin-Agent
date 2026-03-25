@@ -51,4 +51,4 @@ class GeneralAgent(BaseAgent):
         """Register general-purpose tools."""
         self.tools.register(ReadFileTool(self._workspace))
         self.tools.register(WriteFileTool(self._workspace))
-        self.tools.register(ShellTool())
+        self.tools.register(ShellTool(workspace=self._workspace, **self._exec_tool_config))

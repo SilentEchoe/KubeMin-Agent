@@ -71,3 +71,39 @@ def test_runtime_from_config_applies_context_budget_to_agents(tmp_path: Path) ->
     assert general._memory_backend == "jsonl"
     assert general._memory_top_k == 3
     assert general._memory_context_max_chars == 1000
+
+
+def test_runtime_from_config_applies_exec_sandbox_config(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir(parents=True, exist_ok=True)
+    config = Config()
+    config.tools.exec.timeout = 45
+    config.tools.exec.restrict_to_workspace = True
+    config.tools.exec.sandbox_mode = "strict"
+    config.tools.exec.sandbox_runtime = "bwrap"
+    config.tools.exec.sandbox_allow_network = False
+
+    runtime = ControlPlaneRuntime.from_config(config, RoutingProvider(), workspace)
+    general = runtime.registry.get("general")
+    assert general is not None
+    run_command_tool = general.tools.get("run_command")
+    assert run_command_tool is not None
+    assert run_command_tool._default_timeout == 45
+    assert run_command_tool._restrict_to_workspace is True
+    assert run_command_tool._sandbox_mode == "strict"
+    assert run_command_tool._sandbox_runtime == "bwrap"
+
+
+def test_runtime_from_config_upgrades_tool_sandbox_in_global_strict(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir(parents=True, exist_ok=True)
+    config = Config()
+    config.sandbox.mode = "strict"
+    config.tools.exec.sandbox_mode = "off"
+
+    runtime = ControlPlaneRuntime.from_config(config, RoutingProvider(), workspace)
+    general = runtime.registry.get("general")
+    assert general is not None
+    run_command_tool = general.tools.get("run_command")
+    assert run_command_tool is not None
+    assert run_command_tool._sandbox_mode == "strict"

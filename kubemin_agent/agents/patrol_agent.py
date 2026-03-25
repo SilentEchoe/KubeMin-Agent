@@ -76,7 +76,7 @@ class PatrolAgent(BaseAgent):
     def _register_tools(self) -> None:
         """Register patrol-specific tools."""
         self.tools.register(KubectlTool())
-        self.tools.register(ShellTool())
+        self.tools.register(ShellTool(workspace=self._workspace, **self._exec_tool_config))
         self.tools.register(ReadFileTool(self._workspace))
         self.tools.register(WriteFileTool(self._workspace))
         self.tools.register(KubeMinCliTool(

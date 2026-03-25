@@ -1,6 +1,7 @@
 """Configuration schema using Pydantic."""
 
 from pathlib import Path
+from typing import Literal
 
 from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings
@@ -95,8 +96,52 @@ class WebToolsConfig(BaseModel):
 class ExecToolConfig(BaseModel):
     """Shell exec tool configuration."""
 
-    timeout: int = 60
+    timeout: int = 30
     restrict_to_workspace: bool = False
+    sandbox_mode: Literal["off", "best_effort", "strict"] = "off"
+    sandbox_runtime: Literal["auto", "bwrap"] = "auto"
+    sandbox_allow_network: bool = False
+
+
+class SandboxNetworkConfig(BaseModel):
+    """Global sandbox network policy configuration."""
+
+    default_deny: bool = True
+    enforce_proxy: bool = True
+    proxy_url: str = ""
+    allowlist: list[str] = Field(default_factory=list)
+
+
+class SandboxContainerConfig(BaseModel):
+    """Container backend configuration for global sandbox launcher."""
+
+    runtime: Literal["docker", "podman"] = "docker"
+    image: str = "kubemin-agent:latest"
+    workspace_mount: str = "/data/workspace"
+    config_mount: str = "/etc/kubemin/config.json"
+    read_only_rootfs: bool = True
+    pids_limit: int = 512
+    memory_limit: str = "2g"
+    cpu_limit: str = "2"
+
+
+class SandboxK8sConfig(BaseModel):
+    """Kubernetes deployment-time sandbox enforcement configuration."""
+
+    runtime_class: str = "gvisor"
+    require_runtime_class: bool = True
+
+
+class SandboxConfig(BaseModel):
+    """Global process-level sandbox configuration."""
+
+    mode: Literal["off", "best_effort", "strict"] = "strict"
+    backends: list[Literal["container", "bwrap"]] = Field(
+        default_factory=lambda: ["container", "bwrap"]
+    )
+    container: SandboxContainerConfig = Field(default_factory=SandboxContainerConfig)
+    network: SandboxNetworkConfig = Field(default_factory=SandboxNetworkConfig)
+    k8s: SandboxK8sConfig = Field(default_factory=SandboxK8sConfig)
 
 
 class ToolsConfig(BaseModel):
@@ -163,6 +208,7 @@ class Config(BaseSettings):
     providers: ProvidersConfig = Field(default_factory=ProvidersConfig)
     gateway: GatewayConfig = Field(default_factory=GatewayConfig)
     tools: ToolsConfig = Field(default_factory=ToolsConfig)
+    sandbox: SandboxConfig = Field(default_factory=SandboxConfig)
     kubemin: KubeMinConfig = Field(default_factory=KubeMinConfig)
     control: ControlConfig = Field(default_factory=ControlConfig)
     evaluation: EvaluationConfig = Field(default_factory=EvaluationConfig)

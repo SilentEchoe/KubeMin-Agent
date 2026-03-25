@@ -9,12 +9,28 @@ from rich.console import Console
 from rich.table import Table
 
 from kubemin_agent.config import ensure_workspace, load_config, save_default_config
+from kubemin_agent.sandbox import (
+    EgressGuardError,
+    SandboxBootstrapError,
+    ensure_process_sandbox,
+    install_egress_guard,
+)
 
 app = typer.Typer(
     name="kubemin-agent",
     help="KubeMin-Agent: Intelligent assistant for cloud-native application management",
 )
 console = Console()
+
+
+def _enforce_global_sandbox(config, config_path: Optional[Path]) -> None:
+    """Apply process-level sandbox and network guard for runtime commands."""
+    try:
+        ensure_process_sandbox(config, config_path=config_path)
+        install_egress_guard(config)
+    except (SandboxBootstrapError, EgressGuardError) as e:
+        console.print(f"[red]Sandbox error:[/red] {e}")
+        raise typer.Exit(1)
 
 
 @app.command()
@@ -40,6 +56,7 @@ def agent(
 ) -> None:
     """Chat with the agent."""
     config = load_config(config_path)
+    _enforce_global_sandbox(config, config_path)
     workspace = ensure_workspace(config)
 
     api_key = config.get_api_key()
@@ -90,7 +107,7 @@ def agent(
         console.print(response)
     else:
         # Provide minimal stub since runtime logic relies on ControlPlaneRuntime structure.
-        # But we can update the prompt loop if needed or just leave a message 
+        # But we can update the prompt loop if needed or just leave a message
         # that interactive mode requires control plane for the Claude style.
         console.print("[bold]KubeMin-Agent[/bold] legacy interactive mode. Type 'exit' to quit.\n")
         console.print("[yellow]For the new advanced Claude Code UI, enable the control plane in your config![/yellow]\n")
@@ -139,6 +156,16 @@ def status(
     table.add_row("Control Plane", "Enabled" if config.control.enabled else "Disabled")
     table.add_row("Control Max Parallel", str(config.control.max_parallelism))
     table.add_row("Control Fail Fast", str(config.control.fail_fast))
+    table.add_row("Sandbox Mode", str(config.sandbox.mode))
+    sandbox_backends = (
+        ",".join(config.sandbox.backends)
+        if isinstance(config.sandbox.backends, list)
+        else str(config.sandbox.backends)
+    )
+    table.add_row("Sandbox Backends", sandbox_backends)
+    table.add_row("Sandbox Container Runtime", str(config.sandbox.container.runtime))
+    table.add_row("Sandbox Network Default Deny", str(config.sandbox.network.default_deny))
+    table.add_row("Sandbox Enforce Proxy", str(config.sandbox.network.enforce_proxy))
     table.add_row("Evaluation", "Enabled" if config.evaluation.enabled else "Disabled")
     table.add_row("Evaluation Mode", config.evaluation.mode)
     table.add_row("Evaluation Warn Threshold", str(config.evaluation.warn_threshold))
@@ -159,6 +186,7 @@ def gateway(
 ) -> None:
     """Start the gateway (agent + channels + cron + heartbeat)."""
     config = load_config(config_path)
+    _enforce_global_sandbox(config, config_path)
     workspace = ensure_workspace(config)
 
     api_key = config.get_api_key()
@@ -306,7 +334,6 @@ def patrol(
 ) -> None:
     """Run a one-shot patrol or show patrol schedule status."""
     config = load_config(config_path)
-    workspace = ensure_workspace(config)
 
     if schedule:
         table = Table(title="Patrol Schedule")
@@ -318,6 +345,9 @@ def patrol(
         table.add_row("Chat ID", config.patrol.chat_id)
         console.print(table)
         return
+
+    _enforce_global_sandbox(config, config_path)
+    workspace = ensure_workspace(config)
 
     api_key = config.get_api_key()
     if not api_key:

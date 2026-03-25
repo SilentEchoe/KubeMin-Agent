@@ -16,9 +16,22 @@ spec:
         app: game-audit-agent
         component: agent
     spec:
+      runtimeClassName: gvisor
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: game-audit-agent
           image: game-audit-agent:latest
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
           ports:
             - containerPort: 8080
               protocol: TCP
@@ -39,12 +52,6 @@ spec:
                   name: game-audit-config
                   key: llm-api-base
                   optional: true
-          volumeMounts:
-            - name: workspace
-              mountPath: /data/workspace
-            - name: guides
-              mountPath: /data/guides
-              readOnly: true
           resources:
             requests:
               cpu: "500m"
@@ -54,6 +61,8 @@ spec:
               memory: "2Gi"
           # Chrome needs extra shared memory
           volumeMounts:
+            - name: tmp
+              mountPath: /tmp
             - name: dshm
               mountPath: /dev/shm
             - name: workspace
@@ -74,6 +83,8 @@ spec:
             initialDelaySeconds: 10
             periodSeconds: 10
       volumes:
+        - name: tmp
+          emptyDir: {}
         - name: dshm
           emptyDir:
             medium: Memory
@@ -100,6 +111,56 @@ spec:
       targetPort: 8080
       protocol: TCP
   type: ClusterIP
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: game-audit-agent-default-deny
+spec:
+  podSelector:
+    matchLabels:
+      app: game-audit-agent
+  policyTypes:
+    - Ingress
+    - Egress
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: game-audit-agent-allow-required
+spec:
+  podSelector:
+    matchLabels:
+      app: game-audit-agent
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - namespaceSelector: {}
+      ports:
+        - protocol: TCP
+          port: 8080
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    - to:
+        - podSelector:
+            matchLabels:
+              app: egress-proxy
+      ports:
+        - protocol: TCP
+          port: 3128
 ---
 apiVersion: v1
 kind: ConfigMap

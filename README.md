@@ -124,6 +124,31 @@ kubemin-agent gateway
 
 Gateway 模式会同时启动 Agent 服务、Telegram/飞书频道监听和定时巡检任务。
 
+> [!IMPORTANT]
+> 全局沙箱默认 `strict`。`agent/gateway/patrol` 启动时会先做沙箱预检：
+> - 本地优先使用容器后端（docker/podman）重启到沙箱内
+> - 若 strict 且无可用后端，会直接失败（fail closed）
+> - 若启用默认拒绝网络策略，必须配置 `sandbox.network.proxy_url`
+
+推荐配置示例：
+
+```yaml
+sandbox:
+  mode: strict
+  backends: [container, bwrap]
+  container:
+    runtime: docker
+    image: kubemin-agent:latest
+  network:
+    default_deny: true
+    enforce_proxy: true
+    proxy_url: "http://egress-proxy.default.svc.cluster.local:3128"
+    allowlist:
+      - api.openai.com
+      - openrouter.ai
+      - api.telegram.org
+```
+
 ---
 
 ## 📖 CLI 命令一览

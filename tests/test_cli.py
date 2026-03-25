@@ -110,3 +110,17 @@ def test_cli_agent_direct_message(mock_agent_loop_cls, mock_ensure, mock_load, m
     result = runner.invoke(app, ["agent", "-m", "hello"])
     assert result.exit_code == 0
     assert "Echo: hello" in result.stdout
+
+
+@patch("kubemin_agent.cli.commands.load_config")
+@patch("kubemin_agent.cli.commands.ensure_process_sandbox")
+def test_cli_agent_sandbox_error(mock_ensure_sandbox, mock_load, mock_config):
+    """Agent command should fail closed when sandbox preflight fails."""
+    from kubemin_agent.sandbox import SandboxBootstrapError
+
+    mock_load.return_value = mock_config
+    mock_ensure_sandbox.side_effect = SandboxBootstrapError("no backend available")
+
+    result = runner.invoke(app, ["agent", "-m", "hello"])
+    assert result.exit_code == 1
+    assert "Sandbox error" in result.stdout

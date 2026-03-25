@@ -47,6 +47,7 @@ class BaseAgent(ABC):
         memory_backend: str = DEFAULT_MEMORY_BACKEND,
         memory_top_k: int = DEFAULT_MEMORY_TOP_K,
         memory_context_max_chars: int = DEFAULT_MEMORY_CONTEXT_MAX_CHARS,
+        exec_tool_config: dict[str, Any] | None = None,
     ) -> None:
         self.provider = provider
         self.sessions = sessions
@@ -59,6 +60,7 @@ class BaseAgent(ABC):
         self._memory_backend = memory_backend
         self._memory_top_k = max(0, memory_top_k)
         self._memory_context_max_chars = max(240, memory_context_max_chars)
+        self._exec_tool_config = dict(exec_tool_config or {})
         self._trace_task_id = ""
         self._trace_capture_enabled = True
         self._max_trace_steps = 50

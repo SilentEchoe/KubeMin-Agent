@@ -452,6 +452,7 @@ class Config(BaseSettings):
 | 措施 | 说明 |
 |------|------|
 | 命令执行最小权限 | 默认仅允许工作区内执行，跨目录需显式开启 |
+| 全局沙箱隔离 | 控制平面与子 Agent 默认 strict（fail-closed）；本地容器后端 + K8s 运行时/网络策略 + 工具层二级沙箱 |
 | 高危操作拦截 | 正则匹配危险命令模式并记录审计日志 |
 | K8s 只读限制 | kubectl 工具仅允许 get/describe/logs，禁止 apply/delete |
 | Namespace 隔离 | K8s 工具限制在指定 namespace 内操作 |

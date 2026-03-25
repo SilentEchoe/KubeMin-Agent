@@ -38,6 +38,7 @@ GeneralAgent (extends BaseAgent)
 | 查询驱动记忆注入 | 已实现 | 按当前任务 query 召回 MemoryStore 并注入上下文 |
 | 文件读写 | 已实现 | ReadFileTool + WriteFileTool, workspace 沙箱限制 |
 | Shell 命令执行 | 已实现 | ShellTool, 命令白名单 + 危险模式阻断 |
+| Shell 沙箱隔离执行 | 已实现 | `run_command` 支持 `off/best_effort/strict` 三种模式, 基于 bwrap 实现进程与文件系统隔离 |
 | Web 搜索 | 规划中 | 搜索引擎查询和网页抓取 |
 | 通用问答 | 已实现 | 通过 LLM 回答云原生/通用技术问题 |
 
@@ -45,6 +46,8 @@ GeneralAgent (extends BaseAgent)
 
 - 文件操作限定在 workspace 目录内
 - Shell 命令禁止破坏性操作 (rm -rf, chmod 777 等)
+- Shell 命令可启用 OS 级沙箱隔离 (bwrap): workspace 可写、根文件系统只读、可选禁网
+- `strict` 沙箱模式下, 若宿主机缺少沙箱 runtime 则拒绝执行 (fail closed)
 - 不暴露 API 密钥和凭证
 - 不执行未经审查的外部脚本
 
@@ -54,7 +57,7 @@ GeneralAgent (extends BaseAgent)
 |------|------|------|
 | ReadFileTool | 已实现 | workspace 内文件读取, 敏感文件过滤 |
 | WriteFileTool | 已实现 | workspace 内文件写入, 自动创建父目录 |
-| ShellTool | 已实现 | 安全沙箱内的 Shell 命令, 命令白名单 |
+| ShellTool | 已实现 | 命令白名单 + 危险模式阻断 + 可选 bwrap 沙箱隔离执行 |
 | WebSearchTool | 规划中 | 网络搜索和信息检索 |
 
 ## 技术取舍
@@ -64,12 +67,14 @@ GeneralAgent (extends BaseAgent)
 | Fallback 定位 | 明确分工, 专职 Agent 优先 | 全能 Agent (放弃: 职责不清, system prompt 过长) |
 | Workspace 沙箱 | 最小权限原则, 防止越权 | 全文件系统访问 (放弃: 安全风险) |
 | Shell 白名单策略 | 动态黑名单容易遗漏危险命令 | 黑名单 (放弃: 不完备) |
+| 全局沙箱默认 `strict` | 保证 fail-closed，不允许“无沙箱静默运行” | 默认 `best_effort` (放弃: 安全边界不稳定) |
 | 结构化轨迹而非完整思维链 | 保证可观测同时规避敏感推理泄露风险 | 记录完整 CoT (放弃: 风险高且噪音大) |
 
 ## 变更日志
 
 | 日期 | 变更 | 原因 |
 |------|------|------|
+| 2026-03-18 | `ShellTool` 增加可配置沙箱隔离执行 (`off/best_effort/strict`) 与 `strict` fail-closed 策略 | 提升命令执行安全边界, 降低越权风险 |
 | 2026-02-28 | 支持 `ContextEnvelope` 跨任务上下文继承与查询驱动记忆注入 | 减少重复探索，提升复杂任务上下文利用率 |
 | 2026-02-27 | 接入在线评估与 `reasoning_step` 结构化轨迹 | 解决执行黑盒问题, 提升可观测性 |
 | 2026-02-26 | 实现 ReadFileTool + WriteFileTool + ShellTool | MVP 工具集, 使 GeneralAgent 可实际处理用户请求 |
