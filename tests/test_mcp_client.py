@@ -1,6 +1,7 @@
 """Tests for MCPClient."""
 
 import asyncio
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -142,3 +143,112 @@ async def test_stop_cleanup(mcp_client):
     assert mcp_client._reader_task is None
     assert not mcp_client._initialized
     assert len(mcp_client._pending) == 0
+
+
+def test_detect_container_from_env(monkeypatch):
+    monkeypatch.setenv("UNSAFE_ALLOW_NO_SANDBOX", "1")
+    assert MCPClient._detect_container() is True
+    monkeypatch.setenv("UNSAFE_ALLOW_NO_SANDBOX", "0")
+    assert MCPClient._detect_container() is False
+
+
+@pytest.mark.asyncio
+async def test_inject_ui_assets_noop_when_not_observable(monkeypatch):
+    client = MCPClient(step_delay=0.0)
+    call_tool = AsyncMock()
+    monkeypatch.setattr(client, "call_tool", call_tool)
+    await client.inject_ui_assets()
+    call_tool.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_inject_ui_assets_calls_evaluate_script(tmp_path: Path, monkeypatch):
+    assets_dir = tmp_path / "ui"
+    assets_dir.mkdir(parents=True, exist_ok=True)
+    (assets_dir / "cursor.css").write_text(".cursor { color: red; }", encoding="utf-8")
+    (assets_dir / "cursor.js").write_text("window.__cursor = true;", encoding="utf-8")
+
+    client = MCPClient(step_delay=0.1)
+    call_tool = AsyncMock(return_value="ok")
+    monkeypatch.setattr(client, "call_tool", call_tool)
+    monkeypatch.setattr("kubemin_agent.agent.tools.mcp_client.UI_ASSETS_DIR", assets_dir)
+
+    await client.inject_ui_assets()
+    call_tool.assert_called_once()
+    args, kwargs = call_tool.call_args
+    assert args[0] == "evaluate_script"
+    assert "window.__cursor = true;" in args[1]["function"]
+
+
+@pytest.mark.asyncio
+async def test_get_element_coordinates_and_animate_cursor(monkeypatch):
+    client = MCPClient(step_delay=0.1)
+    send_request = AsyncMock(return_value={"content": [{"type": "text", "text": '{"x": 10, "y": 22}'}]})
+    monkeypatch.setattr(client, "_send_request", send_request)
+
+    coords = await client.get_element_coordinates("uid-1")
+    assert coords == (10, 22)
+
+    await client.animate_cursor(10, 22, is_click=True)
+    assert send_request.call_count >= 2
+
+
+@pytest.mark.asyncio
+async def test_get_element_coordinates_handles_bad_payload(monkeypatch):
+    client = MCPClient(step_delay=0.1)
+    monkeypatch.setattr(client, "_send_request", AsyncMock(return_value={"content": [{"type": "text", "text": "not-json"}]}))
+    assert await client.get_element_coordinates("uid-1") is None
+    assert await client.get_element_coordinates("") is None
+
+
+@pytest.mark.asyncio
+async def test_send_notification_requires_process():
+    client = MCPClient()
+    with pytest.raises(RuntimeError, match="not started"):
+        await client._send_notification("notifications/initialized", {})
+
+
+@pytest.mark.asyncio
+async def test_send_notification_writes_to_stdin():
+    client = MCPClient()
+    client._process = MagicMock()
+    client._process.stdin = AsyncMock()
+    await client._send_notification("notifications/initialized", {"ok": True})
+    client._process.stdin.write.assert_called_once()
+    client._process.stdin.drain.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_read_responses_handles_result_and_error(monkeypatch):
+    client = MCPClient()
+    process = MagicMock()
+    process.stdout = AsyncMock()
+    process.stdout.readline = AsyncMock(
+        side_effect=[
+            b'{"id": 1, "result": {"ok": true}}\n',
+            b'{"id": 2, "error": "boom"}\n',
+            b'{"method": "notice"}\n',
+            b"",
+        ]
+    )
+    client._process = process
+
+    loop = asyncio.get_event_loop()
+    fut_ok = loop.create_future()
+    fut_err = loop.create_future()
+    client._pending[1] = fut_ok
+    client._pending[2] = fut_err
+
+    await client._read_responses()
+    assert fut_ok.result() == {"ok": True}
+    assert isinstance(fut_err.exception(), RuntimeError)
+
+
+@pytest.mark.asyncio
+async def test_read_responses_breaks_on_invalid_json():
+    client = MCPClient()
+    process = MagicMock()
+    process.stdout = AsyncMock()
+    process.stdout.readline = AsyncMock(side_effect=[b"invalid-json\n"])
+    client._process = process
+    await client._read_responses()
