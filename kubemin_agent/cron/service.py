@@ -3,8 +3,9 @@
 import asyncio
 import json
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
+from typing import Awaitable, Callable
 
 from loguru import logger
 
@@ -18,6 +19,8 @@ class CronService:
     Supports cron expressions, interval-based, and one-time schedules.
     Jobs are persisted to a JSON file.
     """
+
+    MISFIRE_GRACE_SECONDS = 60
 
     def __init__(self, data_dir: Path) -> None:
         self.data_dir = data_dir
@@ -34,6 +37,8 @@ class CronService:
 
         try:
             data = json.loads(self.jobs_file.read_text(encoding="utf-8"))
+            changed = False
+            now = datetime.now()
             for item in data:
                 job = CronJob(
                     id=item["id"],
@@ -44,11 +49,22 @@ class CronService:
                     channel=item.get("channel", ""),
                     chat_id=item.get("chat_id", ""),
                     enabled=item.get("enabled", True),
+                    run_on_startup=item.get("run_on_startup", False),
+                    misfire_policy=(
+                        "run_once" if item.get("misfire_policy") == "run_once" else "skip"
+                    ),
                     created_at=item.get("created_at", ""),
                     last_run=item.get("last_run"),
+                    next_run=item.get("next_run"),
                 )
+                if not job.next_run:
+                    computed = self._bootstrap_next_run(job, now)
+                    job.next_run = computed.isoformat() if computed else None
+                    changed = True
                 self._jobs[job.id] = job
             logger.debug(f"Loaded {len(self._jobs)} cron jobs")
+            if changed:
+                self._save_jobs()
         except Exception as e:
             logger.error(f"Failed to load cron jobs: {e}")
 
@@ -65,8 +81,11 @@ class CronService:
                 "channel": job.channel,
                 "chat_id": job.chat_id,
                 "enabled": job.enabled,
+                "run_on_startup": job.run_on_startup,
+                "misfire_policy": job.misfire_policy,
                 "created_at": job.created_at,
                 "last_run": job.last_run,
+                "next_run": job.next_run,
             })
         self.jobs_file.write_text(
             json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8"
@@ -80,6 +99,8 @@ class CronService:
         schedule_value: str,
         channel: str = "",
         chat_id: str = "",
+        run_on_startup: bool = False,
+        misfire_policy: str = "skip",
     ) -> CronJob:
         """
         Add a new scheduled job.
@@ -91,6 +112,8 @@ class CronService:
             schedule_value: Schedule specification.
             channel: Target channel for output.
             chat_id: Target chat ID for output.
+            run_on_startup: Whether to execute once immediately when service starts.
+            misfire_policy: Policy when a schedule is missed ('skip' | 'run_once').
 
         Returns:
             The created CronJob.
@@ -103,7 +126,11 @@ class CronService:
             schedule_value=schedule_value,
             channel=channel,
             chat_id=chat_id,
+            run_on_startup=run_on_startup,
+            misfire_policy="run_once" if misfire_policy == "run_once" else "skip",
         )
+        next_run = self._bootstrap_next_run(job, datetime.now())
+        job.next_run = next_run.isoformat() if next_run else None
         self._jobs[job.id] = job
         self._save_jobs()
         logger.info(f"Cron job added: {job.name} ({job.id})")
@@ -122,7 +149,7 @@ class CronService:
         """List all jobs."""
         return list(self._jobs.values())
 
-    async def run(self, execute_callback) -> None:
+    async def run(self, execute_callback: Callable[[CronJob], Awaitable[None]]) -> None:
         """
         Run the cron service loop.
 
@@ -142,6 +169,10 @@ class CronService:
                 if self._should_run(job, now):
                     try:
                         job.last_run = now.isoformat()
+                        next_run = self._compute_next_run(job, now)
+                        job.next_run = next_run.isoformat() if next_run else None
+                        if job.schedule_type == ScheduleType.AT and next_run is None:
+                            job.enabled = False
                         self._save_jobs()
                         await execute_callback(job)
                     except Exception as e:
@@ -151,32 +182,80 @@ class CronService:
 
     def _should_run(self, job: CronJob, now: datetime) -> bool:
         """Check if a job should run at the given time."""
+        if not job.next_run:
+            next_run = self._bootstrap_next_run(job, now)
+            job.next_run = next_run.isoformat() if next_run else None
+            self._save_jobs()
+        if not job.next_run:
+            return False
+
+        try:
+            scheduled_at = datetime.fromisoformat(job.next_run)
+        except ValueError:
+            repaired = self._bootstrap_next_run(job, now)
+            job.next_run = repaired.isoformat() if repaired else None
+            self._save_jobs()
+            return False
+
+        if now < scheduled_at:
+            return False
+
+        overdue_seconds = (now - scheduled_at).total_seconds()
+        if overdue_seconds > self.MISFIRE_GRACE_SECONDS and job.misfire_policy == "skip":
+            repaired = self._advance_next_run_to_future(job, now, scheduled_at)
+            job.next_run = repaired.isoformat() if repaired else None
+            self._save_jobs()
+            return False
+        return True
+
+    def _bootstrap_next_run(self, job: CronJob, now: datetime) -> datetime | None:
+        """Compute first next_run for new/legacy jobs."""
+        if not job.last_run and job.run_on_startup:
+            return now
+        if job.last_run:
+            try:
+                return self._compute_next_run(job, datetime.fromisoformat(job.last_run))
+            except ValueError:
+                return self._compute_next_run(job, now)
+        return self._compute_next_run(job, now)
+
+    def _compute_next_run(self, job: CronJob, reference: datetime) -> datetime | None:
+        """Compute the next schedule after the given reference time."""
         if job.schedule_type == ScheduleType.EVERY:
-            if not job.last_run:
-                return True
-            last = datetime.fromisoformat(job.last_run)
-            interval = int(job.schedule_value)
-            return (now - last).total_seconds() >= interval
+            interval_seconds = int(job.schedule_value)
+            return reference + timedelta(seconds=interval_seconds)
 
         if job.schedule_type == ScheduleType.CRON:
-            try:
-                from croniter import croniter
+            from croniter import croniter
 
-                cron = croniter(job.schedule_value, now)
-                prev = cron.get_prev(datetime)
-                if not job.last_run:
-                    return True
-                last = datetime.fromisoformat(job.last_run)
-                return prev > last
-            except Exception:
-                return False
+            cron = croniter(job.schedule_value, reference)
+            return cron.get_next(datetime)
 
         if job.schedule_type == ScheduleType.AT:
             target = datetime.fromisoformat(job.schedule_value)
-            if not job.last_run and now >= target:
-                return True
+            if reference < target:
+                return target
+            return None
 
-        return False
+        return None
+
+    def _advance_next_run_to_future(
+        self,
+        job: CronJob,
+        now: datetime,
+        scheduled_at: datetime,
+    ) -> datetime | None:
+        """Advance next_run until it moves to the future for skip policy."""
+        if job.schedule_type == ScheduleType.AT:
+            return None
+
+        next_run = scheduled_at
+        while next_run <= now:
+            computed = self._compute_next_run(job, next_run)
+            if computed is None:
+                return None
+            next_run = computed
+        return next_run
 
     def stop(self) -> None:
         """Stop the cron service."""

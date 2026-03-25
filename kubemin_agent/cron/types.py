@@ -3,6 +3,7 @@
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
+from typing import Literal
 
 
 class ScheduleType(Enum):
@@ -25,5 +26,8 @@ class CronJob:
     channel: str = ""
     chat_id: str = ""
     enabled: bool = True
+    run_on_startup: bool = False
+    misfire_policy: Literal["skip", "run_once"] = "skip"
     created_at: str = field(default_factory=lambda: datetime.now().isoformat())
     last_run: str | None = None
+    next_run: str | None = None

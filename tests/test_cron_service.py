@@ -1,7 +1,7 @@
 """Tests for CronService."""
 
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
@@ -72,21 +72,37 @@ def test_cron_service_init_and_storage(workspace):
 
 
 def test_should_run_every(workspace):
-    """Test the _should_run logic for 'every' schedule."""
+    """Test the _should_run logic for 'every' schedule with skip misfire policy."""
     service = CronService(workspace)
     job = service.add_job("Interval", "Msg", ScheduleType.EVERY, "60")
+    now = datetime.now()
 
-    now = datetime(2024, 1, 1, 12, 0, 0)
+    # Default run_on_startup is False, so first due time is in the future.
+    assert job.next_run is not None
+    assert datetime.fromisoformat(job.next_run) > now
 
-    # Never run before -> should run
+    # Due within grace window -> should run
+    job.next_run = (now - timedelta(seconds=10)).isoformat()
     assert service._should_run(job, now) is True
 
-    # Run recently -> should not run
-    job.last_run = datetime(2024, 1, 1, 11, 59, 30).isoformat()
+    # Misfire with skip policy -> should not run and next_run should advance
+    job.next_run = (now - timedelta(minutes=10)).isoformat()
     assert service._should_run(job, now) is False
+    assert job.next_run is not None
+    assert datetime.fromisoformat(job.next_run) > now
 
-    # Run long ago -> should run
-    job.last_run = datetime(2024, 1, 1, 11, 58, 0).isoformat()
+
+def test_should_run_every_on_startup(workspace):
+    """Jobs configured with run_on_startup should execute immediately once."""
+    service = CronService(workspace)
+    job = service.add_job(
+        "Immediate",
+        "Msg",
+        ScheduleType.EVERY,
+        "60",
+        run_on_startup=True,
+    )
+    now = datetime.now()
     assert service._should_run(job, now) is True
 
 
@@ -102,32 +118,39 @@ def test_should_run_at(workspace):
     # After target, not run yet -> should run
     assert service._should_run(job, datetime(2024, 1, 1, 12, 0, 1)) is True
 
-    # After target, already run -> don't run
+    # After target, already run (next_run cleared) -> don't run
     job.last_run = datetime(2024, 1, 1, 12, 0, 1).isoformat()
+    job.next_run = None
     assert service._should_run(job, datetime(2024, 1, 1, 12, 0, 5)) is False
 
 
 def test_should_run_cron(workspace):
     """Test the _should_run logic for 'cron' expressions."""
-    # Note: Requires croniter plugin for tests to pass this branch
     service = CronService(workspace)
-
-    # Every hour on the hour
-    job = service.add_job("CronJob", "Msg", ScheduleType.CRON, "0 * * * *")
-
-    with freeze_time("2024-01-01 12:01:00"):
-        # Never run before -> should run
-        assert service._should_run(job, datetime.now()) is True
-
-        # Ran recently after the last tick -> shouldn't run
-        # Last tick was 12:00:00. If last_run is 12:00:30, prev > last evaluates as False.
-        job.last_run = "2024-01-01T12:00:30"
+    with freeze_time("2024-01-01 12:00:00"):
+        job = service.add_job("CronJob", "Msg", ScheduleType.CRON, "*/1 * * * *")
+        # Default run_on_startup=False -> next minute
+        assert job.next_run == "2024-01-01T12:01:00"
         assert service._should_run(job, datetime.now()) is False
 
-        # Ran before the last tick -> should run
-        # Last tick was 12:00:00. If last_run is 11:59:00, prev > last evaluates as True.
-        job.last_run = "2024-01-01T11:59:00"
+    with freeze_time("2024-01-01 12:01:30"):
+        # Slightly overdue (within grace) -> should run
         assert service._should_run(job, datetime.now()) is True
+
+
+def test_should_run_misfire_run_once_policy(workspace):
+    """run_once policy should execute once even after long downtime."""
+    service = CronService(workspace)
+    job = service.add_job(
+        "MisfireRunOnce",
+        "Msg",
+        ScheduleType.EVERY,
+        "60",
+        misfire_policy="run_once",
+    )
+    now = datetime.now()
+    job.next_run = (now - timedelta(hours=2)).isoformat()
+    assert service._should_run(job, now) is True
 
 
 @pytest.mark.asyncio
@@ -136,7 +159,7 @@ async def test_cron_service_run_loop(workspace):
     service = CronService(workspace)
 
     # Create two jobs, one that should run, one that shouldn't
-    job_run = service.add_job("Run Me", "Yes", ScheduleType.EVERY, "10")
+    job_run = service.add_job("Run Me", "Yes", ScheduleType.EVERY, "10", run_on_startup=True)
     job_skip = service.add_job("Skip Me", "No", ScheduleType.AT, "2099-01-01T00:00:00")
     job_disabled = service.add_job("Disabled", "No", ScheduleType.EVERY, "10")
     job_disabled.enabled = False
