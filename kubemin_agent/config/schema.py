@@ -159,6 +159,14 @@ class KubeMinConfig(BaseModel):
     default_namespace: str = "default"
 
 
+class ControlBusConfig(BaseModel):
+    """MessageBus runtime constraints for backpressure and isolation."""
+
+    inbound_maxsize: int = 200
+    outbound_maxsize: int = 200
+    subscriber_timeout_seconds: float = 5.0
+
+
 class ControlConfig(BaseModel):
     """Control plane runtime configuration."""
 
@@ -167,6 +175,7 @@ class ControlConfig(BaseModel):
     max_parallelism: int = 4
     fail_fast: bool = False
     orchestration_mode: str = "orchestrated"  # "orchestrated" | "intent_dispatch"
+    bus: ControlBusConfig = Field(default_factory=ControlBusConfig)
 
 
 class EvaluationConfig(BaseModel):

@@ -33,6 +33,17 @@ def _enforce_global_sandbox(config, config_path: Optional[Path]) -> None:
         raise typer.Exit(1)
 
 
+def _build_message_bus(config):
+    """Create MessageBus using control-plane backpressure settings."""
+    from kubemin_agent.bus.queue import MessageBus
+
+    return MessageBus(
+        inbound_maxsize=config.control.bus.inbound_maxsize,
+        outbound_maxsize=config.control.bus.outbound_maxsize,
+        subscriber_timeout_seconds=config.control.bus.subscriber_timeout_seconds,
+    )
+
+
 @app.command()
 def onboard(
     config_path: Optional[Path] = typer.Option(None, "--config", "-c", help="Config file path"),
@@ -65,7 +76,6 @@ def agent(
         raise typer.Exit(1)
 
     from kubemin_agent.agent.loop import AgentLoop
-    from kubemin_agent.bus.queue import MessageBus
     from kubemin_agent.control.runtime import ControlPlaneRuntime
     from kubemin_agent.providers.litellm_provider import LiteLLMProvider
 
@@ -89,7 +99,7 @@ def agent(
         return
 
     # Backward-compatibility path: legacy AgentLoop mode.
-    bus = MessageBus()
+    bus = _build_message_bus(config)
     loop = AgentLoop(
         bus=bus,
         provider=provider,
@@ -196,7 +206,6 @@ def gateway(
 
     from kubemin_agent.agent.loop import AgentLoop
     from kubemin_agent.bus.events import InboundMessage
-    from kubemin_agent.bus.queue import MessageBus
     from kubemin_agent.channels.feishu import FeishuChannel
     from kubemin_agent.channels.manager import ChannelManager
     from kubemin_agent.channels.telegram import TelegramChannel
@@ -213,7 +222,7 @@ def gateway(
             default_model=config.agents.defaults.model,
             default_temperature=config.agents.defaults.temperature,
         )
-        bus = MessageBus()
+        bus = _build_message_bus(config)
         channel_manager = ChannelManager(bus)
         cron_service = CronService(workspace)
         heartbeat_service = HeartbeatService(workspace)

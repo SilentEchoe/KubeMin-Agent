@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from typer.testing import CliRunner
 
-from kubemin_agent.cli.commands import app
+from kubemin_agent.cli.commands import _build_message_bus, app
 
 runner = CliRunner()
 
@@ -37,6 +37,9 @@ def mock_config(tmp_path: Path):
     mock_cfg.control.enabled = False
     mock_cfg.control.max_parallelism = 5
     mock_cfg.control.fail_fast = True
+    mock_cfg.control.bus.inbound_maxsize = 200
+    mock_cfg.control.bus.outbound_maxsize = 200
+    mock_cfg.control.bus.subscriber_timeout_seconds = 5.0
 
     mock_cfg.evaluation.enabled = False
     mock_cfg.evaluation.mode = "standard"
@@ -50,6 +53,18 @@ def mock_config(tmp_path: Path):
     mock_cfg.kubemin.api_base = None
 
     return mock_cfg
+
+
+def test_build_message_bus_from_control_config(mock_config):
+    """MessageBus should pick up configured queue sizes and timeout."""
+    mock_config.control.bus.inbound_maxsize = 7
+    mock_config.control.bus.outbound_maxsize = 8
+    mock_config.control.bus.subscriber_timeout_seconds = 1.5
+
+    bus = _build_message_bus(mock_config)
+    assert bus.inbound.maxsize == 7
+    assert bus.outbound.maxsize == 8
+    assert bus._subscriber_timeout_seconds == 1.5
 
 
 @patch("kubemin_agent.cli.commands.save_default_config")
