@@ -6,7 +6,7 @@
 
 ## 0. 实现状态更新（2026-02-26）
 
-本次更新聚焦“中控链路落地”，将运行入口从单一 `AgentLoop` 默认模式升级为可直接使用控制面调度链路。
+本次更新聚焦“中控链路落地”，并在后续迭代中将运行入口彻底收敛到控制面调度链路。
 
 ### 0.1 当前实现范围
 
@@ -31,7 +31,7 @@
 
 ### 0.2 与原计划差异说明
 
-- `AgentLoop` 保留为兼容能力，不再作为默认中控执行主链路。
+- legacy `AgentLoop` 执行链路已移除，`agent/gateway` 仅通过 `ControlPlaneRuntime` 运行。
 - `GeneralAgent/K8sAgent/WorkflowAgent` 的专属工具仍为分阶段建设，当前优先完成调度与管控主链路。
 
 ### 0.3 下一步（与 M3-M6 对齐）
@@ -75,6 +75,26 @@
   - `workflow-authoring`
   - `orchestrator-delegation`
 - 新增 Skill 规范文档：`docs/skills-spec.md`
+
+### 0.7 增量更新（2026-03-25）
+
+完成 P0+P1 重构收尾，关键结果如下：
+
+- 执行链路收敛：
+  - 删除 `agent/loop.py`、`agent/context.py`、`agent/subagent.py`
+  - CLI `agent/gateway` 仅保留 `ControlPlaneRuntime` 路径
+  - 移除 legacy 配置语义（如 `control.fallback_mode`）与对应状态展示
+- 调度器内部解耦：
+  - 新增 `IntentPlanner`、`PlanExecutor`、`ExecutionReporter`
+  - `Scheduler` 保留 façade，对外接口 `dispatch`/`execute_saved_plan`/`analyze_intent` 调用语义不变
+- 工具安全与正确性加固：
+  - `BrowserTool` 统一 `untrusted` 包装返回路径
+  - `KubeMinCliTool` 强制命令前缀归一化为 `kubemin-cli`
+  - `KubectlTool` 修复多词子命令（如 `config view`）识别
+  - `run_command` 默认白名单收紧
+- 稳定性与工程基线：
+  - `ChromaDBBackend` 新增 embedding 注入点，测试改为稳定 deterministic embedding
+  - 新增最小 CI（`ruff + pytest`），并清理 `ruff` 问题至 0
 
 ---
 
@@ -205,7 +225,11 @@ flowchart TB
 ```
 kubemin_agent/
 ├── control/            # 中控层
-│   ├── scheduler.py    #    调度器（意图分析 + 任务分派）
+│   ├── scheduler.py    #    调度器 façade（对外接口）
+│   ├── intent_planner.py #  意图规划（LLM 路由与计划解析）
+│   ├── plan_executor.py #   计划执行（任务编排/审计/校验）
+│   ├── execution_reporter.py # 最终执行报告生成
+│   ├── scheduler_types.py #  调度共享类型
 │   ├── validator.py    #    校验器（输出校验 + 安全拦截）
 │   ├── audit.py        #    审计日志
 │   ├── runtime.py      #    运行时装配（Registry/Scheduler/Validator/Audit 组装）
@@ -216,9 +240,6 @@ kubemin_agent/
 │   ├── workflow_agent.py #  WorkflowAgent
 │   └── general_agent.py #   GeneralAgent
 ├── agent/              # Agent 运行时基础设施
-│   ├── loop.py         #    AgentLoop（单 Agent 执行循环）
-│   ├── context.py      #    上下文管理
-│   ├── subagent.py     #    SubagentManager（兼容链路）
 │   ├── memory/         #    MemoryStore + 可插拔后端（file/jsonl/chroma）
 │   ├── skills.py       #    SkillsLoader
 │   └── tools/          #    工具系统

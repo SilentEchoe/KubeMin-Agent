@@ -46,6 +46,8 @@ K8s 部署层额外提供：
 | 本地容器沙箱重启 | 已实现 | 通过 docker/podman 重新拉起同命令 |
 | 进程级外联守卫 | 已实现 | strict + 默认拒绝时要求代理并阻断直连 |
 | K8s 安全清单基线 | 已实现 | securityContext + runtimeClass + NetworkPolicy |
+| 运行入口收敛 | 已实现 | `agent/gateway` 仅走 ControlPlaneRuntime，不再保留 legacy AgentLoop 分支 |
+| Shell 默认白名单收紧 | 已实现 | 移除解释器/包管理/构建类默认入口，降低命令执行攻击面 |
 
 ## 安全约束
 
@@ -77,4 +79,5 @@ K8s 部署层额外提供：
 
 | 日期 | 变更 | 原因 |
 |------|------|------|
+| 2026-03-25 | 移除 legacy AgentLoop 入口并收紧 `run_command` 默认白名单 | 统一运行时安全边界，降低误执行高风险命令概率 |
 | 2026-03-18 | 新增 ControlPlane 全局沙箱架构文档，定义 strict 全局沙箱与代理强制策略 | 将安全边界从工具级提升到进程级 |

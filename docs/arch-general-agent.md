@@ -38,7 +38,7 @@ GeneralAgent (extends BaseAgent)
 | 跨任务上下文继承 | 已实现 | 支持接收 Scheduler 下发的 `ContextEnvelope`，复用依赖任务发现 |
 | 查询驱动记忆注入 | 已实现 | 按当前任务 query 召回 MemoryStore 并注入上下文 |
 | 文件读写 | 已实现 | ReadFileTool + WriteFileTool, workspace 沙箱限制 |
-| Shell 命令执行 | 已实现 | ShellTool, 命令白名单 + 危险模式阻断 |
+| Shell 命令执行 | 已实现 | ShellTool, 默认白名单收紧 + 危险模式阻断 |
 | Shell 沙箱隔离执行 | 已实现 | `run_command` 支持 `off/best_effort/strict` 三种模式, 基于 bwrap 实现进程与文件系统隔离 |
 | Web 搜索 | 规划中 | 搜索引擎查询和网页抓取 |
 | 通用问答 | 已实现 | 通过 LLM 回答云原生/通用技术问题 |
@@ -75,6 +75,7 @@ GeneralAgent (extends BaseAgent)
 
 | 日期 | 变更 | 原因 |
 |------|------|------|
+| 2026-03-25 | `run_command` 默认允许命令集收紧（移除解释器/包管理/构建入口）并收敛到 ControlPlaneRuntime 唯一路径 | 降低命令执行面暴露风险，消除 legacy 运行分叉 |
 | 2026-03-18 | `ShellTool` 增加可配置沙箱隔离执行 (`off/best_effort/strict`) 与 `strict` fail-closed 策略 | 提升命令执行安全边界, 降低越权风险 |
 | 2026-02-28 | 支持 `ContextEnvelope` 跨任务上下文继承与查询驱动记忆注入 | 减少重复探索，提升复杂任务上下文利用率 |
 | 2026-02-27 | 接入在线评估与 `reasoning_step` 结构化轨迹 | 解决执行黑盒问题, 提升可观测性 |

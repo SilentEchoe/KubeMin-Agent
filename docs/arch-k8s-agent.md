@@ -38,6 +38,7 @@ K8sAgent (extends BaseAgent)
 | 集群资源查询 | 已实现（基础） | 通过 KubectlTool 查询 Pod/Deployment/Service 等资源状态 |
 | 容器日志查看 | 已实现（基础） | 支持 `kubectl logs` 只读日志查看 |
 | 故障诊断 | 已实现（基础） | 基于 `get/describe/logs/top` 提供只读诊断分析 |
+| 多词子命令安全判定 | 已实现 | 支持 `kubectl config view` 等多词子命令的白名单识别 |
 | K8s 概念解答 | 已实现 | 通过 system prompt 提供 K8s 知识问答 |
 
 ## 安全约束
@@ -67,6 +68,7 @@ K8sAgent (extends BaseAgent)
 
 | 日期 | 变更 | 原因 |
 |------|------|------|
+| 2026-03-25 | KubectlTool 修复多词子命令（如 `config view`）安全判定逻辑 | 避免错误拦截合法只读命令并保持安全策略一致性 |
 | 2026-02-28 | 支持 `ContextEnvelope` 跨任务上下文继承与查询驱动记忆注入 | 提升多阶段诊断任务的信息复用能力 |
 | 2026-02-27 | 接入在线评估与 `reasoning_step` 结构化轨迹 | 提升诊断执行过程可观测性 |
 | 2026-02-26 | 实现 KubectlTool (只读白名单 + 命名空间隔离 + Secret 过滤) | MVP 工具集 |

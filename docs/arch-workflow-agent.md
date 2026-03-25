@@ -69,6 +69,7 @@ WorkflowAgent (extends BaseAgent)
 
 | 日期 | 变更 | 原因 |
 |------|------|------|
+| 2026-03-25 | Scheduler 内部拆分为 `IntentPlanner`/`PlanExecutor`/`ExecutionReporter`，WorkflowAgent 对外调度契约保持不变 | 降低调度器耦合度，便于后续编排能力演进 |
 | 2026-02-28 | 支持 `ContextEnvelope` 跨任务上下文继承与查询驱动记忆注入 | 提升多阶段 YAML 生成任务的上下文复用能力 |
 | 2026-02-27 | 接入在线评估与 `reasoning_step` 结构化轨迹 | 提升 YAML 生成任务质量评估能力 |
 | 2026-02-26 | 实现 ReadFileTool + WriteFileTool + YAMLValidatorTool | MVP 工具集 |

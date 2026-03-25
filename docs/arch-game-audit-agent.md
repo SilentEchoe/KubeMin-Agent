@@ -48,6 +48,7 @@ Game URL ──┘                        (JSON-RPC over stdio)
 |------|------|------|
 | PDF 玩法指南解析 | 已实现 | PyMuPDF 提取文本 |
 | 浏览器自动化 (12 种操作) | 已实现 | navigate/click/fill/hover/drag/scroll/wait/evaluate/snapshot/press_key/console_logs/network |
+| BrowserTool 输出隔离包装 | 已实现 | MCP 浏览器结果统一经过 untrusted 包装通道，便于审计与防注入 |
 | 截图取证 | 已实现 | 全页/元素级截图 |
 | 内容合规审核 | 已实现 | 敏感文本 + 图片 + Console 错误 |
 | 错误自动记录 | 已实现 | 每次交互后检测 JS 错误和页面异常 |
@@ -98,6 +99,7 @@ Game URL ──┘                        (JSON-RPC over stdio)
 
 | 日期 | 变更 | 原因 |
 |------|------|------|
+| 2026-03-25 | 修复 BrowserTool `untrusted` 包装死代码并统一返回路径 | 保证浏览器工具输出可审计且行为一致，降低注入风险 |
 | 2026-03-18 | 新增 `evaluate_regression_gate` 工具（持续回归失败识别 + 门禁评分建议） | 在提交最终报告前提供可执行的质量门禁信号，降低“重复引入历史缺陷”风险 |
 | 2026-03-18 | 强化 `submit_report` 校验与兜底（覆盖率范围校验、漏洞计数归一化、缺失字段自动补全） | 提升报告结构稳定性，降低 LLM 输出字段缺失导致的失败率 |
 | 2026-03-16 | 引入 FSM 状态机路径执行模型与测试覆盖率度量 | 彻底打消线性用例导致的分析遗漏疑虑，实现 100% 节点覆盖跟踪 |
