@@ -14,7 +14,7 @@ from kubemin_agent.channels.base import BaseChannel
 class TelegramChannel(BaseChannel):
     """
     Telegram integration channel.
-    
+
     Uses httpx for long-polling the getUpdates endpoint.
     Only allows interactions from users specified in allowed_users.
     """
@@ -29,7 +29,7 @@ class TelegramChannel(BaseChannel):
         self.bot_token = bot_token
         self.allowed_users = [str(u) for u in allowed_users]
         self.api_url = f"https://api.telegram.org/bot{self.bot_token}"
-        
+
         self._running = False
         self._offset = 0
         self._client: httpx.AsyncClient | None = None
@@ -59,10 +59,10 @@ class TelegramChannel(BaseChannel):
                 await self._poll_task
             except asyncio.CancelledError:
                 pass
-            
+
         if self._client:
             await self._client.aclose()
-            
+
         logger.info("Telegram channel stopped.")
 
     async def send_message(self, chat_id: str, content: str) -> None:
@@ -73,7 +73,7 @@ class TelegramChannel(BaseChannel):
 
         url = f"{self.api_url}/sendMessage"
         payload = {"chat_id": chat_id, "text": content}
-        
+
         try:
             response = await self._client.post(url, json=payload, timeout=10.0)
             response.raise_for_status()
@@ -86,12 +86,12 @@ class TelegramChannel(BaseChannel):
             return
 
         url = f"{self.api_url}/getUpdates"
-        
+
         while self._running:
             try:
                 payload: dict[str, Any] = {"offset": self._offset, "timeout": 30}
                 response = await self._client.get(url, params=payload, timeout=40.0)
-                
+
                 if response.status_code != 200:
                     logger.warning(f"Telegram polling returned HTTP {response.status_code}")
                     await asyncio.sleep(2)
@@ -102,7 +102,7 @@ class TelegramChannel(BaseChannel):
                     logger.error(f"Telegram API error: {data.get('description')}")
                     await asyncio.sleep(2)
                     continue
-                    
+
                 updates = data.get("result", [])
                 for update in updates:
                     self._offset = max(self._offset, update["update_id"] + 1)
@@ -119,19 +119,18 @@ class TelegramChannel(BaseChannel):
         message = update.get("message")
         if not message:
             return
-            
+
         text = message.get("text", "")
         if not text:
             return
-            
+
         chat = message.get("chat", {})
         from_user = message.get("from", {})
-        
+
         chat_id = str(chat.get("id"))
         user_id = str(from_user.get("id"))
         username = from_user.get("username", "")
-        
-        auth_identifier = user_id
+
         if username and self.allowed_users:
             # allow fallback to @username matching
             if username in self.allowed_users or user_id in self.allowed_users:
@@ -144,13 +143,13 @@ class TelegramChannel(BaseChannel):
         elif self.allowed_users and user_id not in self.allowed_users:
             logger.warning(f"Unauthorized Telegram user_id attempted contact: {user_id}")
             return
-            
+
         # Wrap into an inbound message and hand to Scheduler via MessageBus
         inbound = InboundMessage(
             channel=self.name,
             chat_id=chat_id,
             content=text,
         )
-        
+
         await self.bus.inbound.put(inbound)
         logger.debug(f"Received Telegram message from {user_id}: {text[:50]}")

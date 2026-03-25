@@ -125,20 +125,20 @@ class SessionManager:
     def init_active_plan_doc(self, session_key: str, original_message: str, tasks: list[Any]) -> Path:
         """Initialize the active plan markdown document."""
         path = self._active_plan_doc_path(session_key)
-        
+
         lines = [
-            f"# Active Execution Plan",
-            f"\n## Objective",
+            "# Active Execution Plan",
+            "\n## Objective",
             f"{original_message}",
-            f"\n## Tasks",
+            "\n## Tasks",
         ]
-        
+
         for t in tasks:
             task_id = getattr(t, 'task_id', t.get('task_id') if isinstance(t, dict) else 'unknown')
             agent = getattr(t, 'agent_name', t.get('agent_name') if isinstance(t, dict) else 'unknown')
             desc = getattr(t, 'description', t.get('description') if isinstance(t, dict) else 'unknown')
             lines.append(f"- [ ] **{task_id}** ({agent}): {desc}")
-            
+
         path.write_text("\n".join(lines), encoding="utf-8")
         return path
 
@@ -147,10 +147,10 @@ class SessionManager:
         path = self._active_plan_doc_path(session_key)
         if not path.exists():
             return
-            
+
         content = path.read_text(encoding="utf-8")
         lines = content.splitlines()
-        
+
         for i, line in enumerate(lines):
             if line.startswith("- [") and f"**{task_id}**" in line:
                 # Replace the checkbox marker (e.g. "- [ ]" or "- [-]") with the new status
@@ -163,7 +163,7 @@ class SessionManager:
                     new_line += f" -> *Result: {snippet}*"
                 lines[i] = new_line
                 break
-                
+
         path.write_text("\n".join(lines), encoding="utf-8")
 
     def get_active_plan_doc_path(self, session_key: str) -> Path | None:

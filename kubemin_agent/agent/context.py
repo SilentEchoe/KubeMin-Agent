@@ -133,7 +133,7 @@ class ContextBuilder:
                     if mtime > cached_mtime:
                         cached_content = file_path.read_text(encoding="utf-8")
                         self._bootstrap_cache[filename] = (mtime, cached_content)
-                    
+
                     parts.append(f"## {filename}\n\n{cached_content}")
                 except OSError:
                     pass
@@ -320,9 +320,9 @@ class ContextBuilder:
         """Compact long text with truncation hint, keeping head and tail."""
         if len(text) <= max_chars:
             return text
-        
+
         # Keep 70% head, 30% tail
         head_chars = int(max_chars * 0.7)
         tail_chars = max_chars - head_chars
-        
+
         return f"{text[:head_chars]}\n...[truncated {len(text) - max_chars} chars]...\n{text[-tail_chars:]}"

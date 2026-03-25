@@ -171,8 +171,8 @@ class KubeMinCliTool(Tool):
             parts = parts[1:]
         elif base not in _ALLOWED_SUBCOMMANDS:
             return (
-                f"Error: command must start with 'kubemin-cli'. "
-                f"Example: 'kubemin-cli get apps'"
+                "Error: command must start with 'kubemin-cli'. "
+                "Example: 'kubemin-cli get apps'"
             )
 
         if not parts:

@@ -132,7 +132,7 @@ async def test_agent_loop_run_bus_listener(agent_loop):
 @pytest.mark.asyncio
 async def test_agent_loop_circuit_breaker(agent_loop):
     """Test that the agent loop breaks early after consecutive tool errors."""
-    
+
     # Always return a tool call
     tc_req = ToolCallRequest(id="call_error", name="fail_tool", arguments={})
     resp = LLMResponse(content=None, finish_reason="tool_calls", tool_calls=[tc_req])
@@ -147,7 +147,7 @@ async def test_agent_loop_circuit_breaker(agent_loop):
 
     # The breaker is hardcoded to 3 in AgentLoop
     assert "too many consecutive tool execution errors" in result
-    
+
     # Provider chat should have been called 3 times exactly
     assert agent_loop.provider.chat.call_count == 3
     assert agent_loop.tools.execute.call_count == 3

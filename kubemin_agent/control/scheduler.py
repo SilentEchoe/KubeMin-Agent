@@ -445,7 +445,7 @@ class Scheduler:
         """
         if not plan.tasks:
             return "Error: Dispatch plan is empty"
-            
+
         # Initialize the active plan document
         self.sessions.init_active_plan_doc(session_key, original_message, plan.tasks)
 
@@ -498,14 +498,14 @@ class Scheduler:
                 continue
 
             task = ready[0]
-            
+
             # Mark task in progress
             self.sessions.update_active_plan_task_status(session_key, task.task_id, "[-]")
-            
+
             # Read active plan content
             plan_path = self.sessions.get_active_plan_doc_path(session_key)
-            active_plan_text = plan_path.read_text(encoding="utf-8") if plan_path else "" 
-            
+            active_plan_text = plan_path.read_text(encoding="utf-8") if plan_path else ""
+
             context_envelope = context_store.build_envelope(
                 task_id=task.task_id,
                 agent_name=task.agent_name,
@@ -525,11 +525,11 @@ class Scheduler:
             execution_order.append(task.task_id)
             remaining.pop(task.task_id, None)
             completed.add(task.task_id)
-            
+
             # Get summary and update task as completed
             summary_text = context_store._summarize_result(task_result.content)
             self.sessions.update_active_plan_task_status(session_key, task.task_id, "[x]", summary_text)
-            
+
             context_store.add_result(
                 task_id=task.task_id,
                 agent_name=task_result.agent_name or task.agent_name,
@@ -542,13 +542,13 @@ class Scheduler:
 
         # Generate final execution report via LLM
         raw_results_prompt = f"Original Objective: {original_message}\n\nTask Results:\n"
-        
+
         for task_id in execution_order:
             if task_id in results:
                 res = results[task_id]
                 status = "FAILED" if res.failed else "SUCCESS"
                 raw_results_prompt += f"--- Task {task_id} ({res.agent_name}) [{status}] ---\n{res.content}\n\n"
-                
+
         if stopped_by_fail_fast and remaining:
             skipped = ", ".join(sorted(remaining.keys()))
             raw_results_prompt += f"--- Skipped Tasks ---\n{skipped} (due to fail_fast)\n\n"
@@ -596,15 +596,15 @@ class Scheduler:
 
         for i in range(0, len(ready), self.max_parallelism):
             chunk = ready[i : i + self.max_parallelism]
-            
+
             # Read active plan content (once for the round)
             plan_path = self.sessions.get_active_plan_doc_path(session_key)
-            active_plan_text = plan_path.read_text(encoding="utf-8") if plan_path else "" 
+            active_plan_text = plan_path.read_text(encoding="utf-8") if plan_path else ""
 
             # Mark tasks in progress
             for task in chunk:
                 self.sessions.update_active_plan_task_status(session_key, task.task_id, "[-]")
-                
+
             envelopes = {
                 task.task_id: context_store.build_envelope(
                     task_id=task.task_id,
@@ -634,11 +634,11 @@ class Scheduler:
                 execution_order.append(task.task_id)
                 remaining.pop(task.task_id, None)
                 completed.add(task.task_id)
-                
+
                 # Get summary and update task as completed
                 summary_text = context_store._summarize_result(task_result.content)
                 self.sessions.update_active_plan_task_status(session_key, task.task_id, "[x]", summary_text)
-                
+
                 context_store.add_result(
                     task_id=task.task_id,
                     agent_name=task_result.agent_name or task.agent_name,

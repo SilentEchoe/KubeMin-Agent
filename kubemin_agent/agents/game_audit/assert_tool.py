@@ -74,7 +74,7 @@ class AssertTool(Tool):
             act_num = self._to_float(actual_str)
             if exp_num is None or act_num is None:
                 return f"FAIL: assert_delta requires numeric inputs, got expected='{expected_str}', actual='{actual_str}'"
-            
+
             # Using a very small epsilon for JS float comparison issues
             if abs(exp_num - act_num) < 1e-5:
                 return f"PASS: calculated delta {act_num} matches expected delta {exp_num}"

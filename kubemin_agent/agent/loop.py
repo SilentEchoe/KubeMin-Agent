@@ -110,11 +110,11 @@ class AgentLoop:
         # Tool call loop
         iteration = 0
         consecutive_errors = 0
-        MAX_CONSECUTIVE_ERRORS = 3
-        
+        max_consecutive_errors = 3
+
         while iteration < self.max_iterations:
             iteration += 1
-            
+
             # Call LLM
             tool_definitions = self.tools.get_definitions() if len(self.tools) > 0 else None
             response = await self.provider.chat(
@@ -145,7 +145,7 @@ class AgentLoop:
                     for tc in response.tool_calls
                 ],
             )
-            
+
             round_had_errors = False
             for tc in response.tool_calls:
                 logger.debug(f"Executing tool: {tc.name}")
@@ -160,7 +160,7 @@ class AgentLoop:
 
             if round_had_errors:
                 consecutive_errors += 1
-                if consecutive_errors >= MAX_CONSECUTIVE_ERRORS:
+                if consecutive_errors >= max_consecutive_errors:
                     logger.warning(f"Circuit breaker triggered: {session_key} failed {consecutive_errors} consecutive times.")
                     breaker_msg = "I encountered too many consecutive tool execution errors and had to stop to prevent an infinite loop."
                     self.sessions.save_turn(session_key, msg.content, breaker_msg)

@@ -1,5 +1,5 @@
-import pytest
-from kubemin_agent.agents.game_audit.models import TestCase, TestPlan, AuditReportV1, TestCaseStatus
+from kubemin_agent.agents.game_audit.models import AuditReportV1, TestCase, TestCaseStatus, TestPlan
+
 
 def test_testcase_creation():
     tc = TestCase(

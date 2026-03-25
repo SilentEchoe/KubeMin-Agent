@@ -11,7 +11,6 @@ from kubemin_agent.control.registry import AgentRegistry
 from kubemin_agent.providers.base import LLMProvider, LLMResponse
 from kubemin_agent.session.manager import SessionManager
 
-
 # ---------------------------------------------------------------------------
 # Stubs
 # ---------------------------------------------------------------------------
