@@ -34,9 +34,9 @@ def mock_config(tmp_path: Path):
     mock_cfg.agents.defaults.temperature = 0.5
     mock_cfg.agents.defaults.max_tool_iterations = 20
 
-    mock_cfg.control.enabled = False
     mock_cfg.control.max_parallelism = 5
     mock_cfg.control.fail_fast = True
+    mock_cfg.control.orchestration_mode = "orchestrated"
 
     mock_cfg.evaluation.enabled = False
     mock_cfg.evaluation.mode = "standard"
@@ -94,18 +94,21 @@ def test_cli_agent_no_key(mock_ensure, mock_load, mock_config, tmp_path):
 
 @patch("kubemin_agent.cli.commands.load_config")
 @patch("kubemin_agent.cli.commands.ensure_workspace")
-@patch("kubemin_agent.agent.loop.AgentLoop")
-def test_cli_agent_direct_message(mock_agent_loop_cls, mock_ensure, mock_load, mock_config, tmp_path):
-    """Test agent sending a direct message in legacy mode."""
+@patch("kubemin_agent.control.runtime.ControlPlaneRuntime.from_config")
+def test_cli_agent_direct_message(mock_runtime_factory, mock_ensure, mock_load, mock_config, tmp_path):
+    """Test agent sending a direct message through ControlPlaneRuntime."""
     mock_ensure.return_value = tmp_path
     mock_load.return_value = mock_config
 
-    mock_loop_instance = mock_agent_loop_cls.return_value
+    mock_runtime = MagicMock()
+    mock_runtime_factory.return_value = mock_runtime
 
-    # Needs to match an AsyncMock result since process_direct is async
-    async def mock_process(msg):
+    async def mock_handle_message(channel, chat_id, msg):
+        assert channel == "cli"
+        assert chat_id == "direct"
         return f"Echo: {msg}"
-    mock_loop_instance.process_direct.side_effect = mock_process
+
+    mock_runtime.handle_message.side_effect = mock_handle_message
 
     result = runner.invoke(app, ["agent", "-m", "hello"])
     assert result.exit_code == 0

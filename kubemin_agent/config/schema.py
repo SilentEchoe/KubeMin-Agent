@@ -162,8 +162,6 @@ class KubeMinConfig(BaseModel):
 class ControlConfig(BaseModel):
     """Control plane runtime configuration."""
 
-    enabled: bool = True
-    fallback_mode: str = "agent_loop"
     max_parallelism: int = 4
     fail_fast: bool = False
     orchestration_mode: str = "orchestrated"  # "orchestrated" | "intent_dispatch"
