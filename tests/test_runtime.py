@@ -109,3 +109,20 @@ def test_runtime_from_config_upgrades_tool_sandbox_in_global_strict(tmp_path: Pa
     run_command_tool = general.tools.get("run_command")
     assert run_command_tool is not None
     assert run_command_tool._sandbox_mode == "strict"
+
+
+def test_runtime_from_config_applies_storage_persistence_config(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir(parents=True, exist_ok=True)
+    config = Config()
+    config.storage.retention_days = 15
+    config.storage.audit_file_max_mb = 7
+    config.storage.session_file_max_mb = 9
+    config.storage.session_cache_messages = 88
+
+    runtime = ControlPlaneRuntime.from_config(config, RoutingProvider(), workspace)
+    assert runtime.sessions._retention_days == 15
+    assert runtime.sessions._session_file_max_bytes == 9 * 1024 * 1024
+    assert runtime.sessions._cache_message_limit == 88
+    assert runtime.audit._retention_days == 15
+    assert runtime.audit._file_max_bytes == 7 * 1024 * 1024

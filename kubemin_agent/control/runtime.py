@@ -59,6 +59,10 @@ class ControlPlaneRuntime:
         exec_sandbox_mode: str = "off",
         exec_sandbox_runtime: str = "auto",
         exec_sandbox_allow_network: bool = False,
+        storage_retention_days: int = 30,
+        audit_file_max_mb: int = 50,
+        session_file_max_mb: int = 50,
+        session_cache_messages: int = 200,
     ) -> None:
         self.provider = provider
         self.workspace = workspace
@@ -72,8 +76,17 @@ class ControlPlaneRuntime:
         self.memory_context_max_chars = memory_context_max_chars
         self.max_tool_iterations = max(1, max_tool_iterations)
 
-        self.sessions = SessionManager(workspace)
-        self.audit = AuditLog(workspace.parent)
+        self.sessions = SessionManager(
+            workspace,
+            cache_message_limit=session_cache_messages,
+            file_max_mb=session_file_max_mb,
+            retention_days=storage_retention_days,
+        )
+        self.audit = AuditLog(
+            workspace.parent,
+            retention_days=storage_retention_days,
+            file_max_mb=audit_file_max_mb,
+        )
         self.validator = Validator()
         self.evaluator = (
             HybridEvaluator(
@@ -153,6 +166,10 @@ class ControlPlaneRuntime:
             exec_sandbox_mode=exec_sandbox_mode,
             exec_sandbox_runtime=config.tools.exec.sandbox_runtime,
             exec_sandbox_allow_network=config.tools.exec.sandbox_allow_network,
+            storage_retention_days=config.storage.retention_days,
+            audit_file_max_mb=config.storage.audit_file_max_mb,
+            session_file_max_mb=config.storage.session_file_max_mb,
+            session_cache_messages=config.storage.session_cache_messages,
         )
 
     def _register_default_agents(self) -> None:

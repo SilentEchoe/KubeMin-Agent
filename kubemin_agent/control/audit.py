@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -17,9 +17,18 @@ class AuditLog:
     Provides a complete audit trail for debugging, compliance, and analysis.
     """
 
-    def __init__(self, data_dir: Path) -> None:
+    def __init__(
+        self,
+        data_dir: Path,
+        retention_days: int = 30,
+        file_max_mb: int = 50,
+    ) -> None:
         self.log_dir = data_dir / "audit"
         self.log_dir.mkdir(parents=True, exist_ok=True)
+        self._retention_days = max(1, retention_days)
+        self._file_max_bytes = max(1, file_max_mb) * 1024 * 1024
+        self._last_cleanup_day: date = datetime.now().date()
+        self._cleanup_old_logs()
 
     def _log_file(self) -> Path:
         """Get today's audit log file."""
@@ -29,8 +38,11 @@ class AuditLog:
     def _write(self, entry: dict[str, Any]) -> None:
         """Write an audit entry."""
         entry["timestamp"] = datetime.now().isoformat()
+        self._maybe_cleanup_old_logs()
+        serialized = json.dumps(entry, ensure_ascii=False)
+        self._rotate_active_log_if_needed(additional_bytes=len(serialized.encode("utf-8")) + 1)
         with open(self._log_file(), "a", encoding="utf-8") as f:
-            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+            f.write(serialized + "\n")
 
     @staticmethod
     def _preview(value: Any, limit: int = 200) -> str:
@@ -212,3 +224,45 @@ class AuditLog:
                 "suggestions": suggestions or [],
             }
         )
+
+    def _rotate_active_log_if_needed(self, additional_bytes: int) -> None:
+        """Rotate today's log file when it exceeds max size."""
+        active_file = self._log_file()
+        if not active_file.exists():
+            return
+        projected_size = active_file.stat().st_size + additional_bytes
+        if projected_size <= self._file_max_bytes:
+            return
+        rotated_file = self._next_rotated_path(active_file)
+        active_file.rename(rotated_file)
+        logger.info(f"Audit log rotated: {rotated_file.name}")
+
+    @staticmethod
+    def _next_rotated_path(active_file: Path) -> Path:
+        """Generate a non-conflicting rotated log path."""
+        suffix = datetime.now().strftime("%H%M%S")
+        candidate = active_file.with_name(f"{active_file.stem}.{suffix}.jsonl")
+        index = 1
+        while candidate.exists():
+            candidate = active_file.with_name(f"{active_file.stem}.{suffix}.{index}.jsonl")
+            index += 1
+        return candidate
+
+    def _maybe_cleanup_old_logs(self) -> None:
+        """Run retention cleanup once per day."""
+        today = datetime.now().date()
+        if today == self._last_cleanup_day:
+            return
+        self._cleanup_old_logs()
+        self._last_cleanup_day = today
+
+    def _cleanup_old_logs(self) -> None:
+        """Delete audit log files older than retention period."""
+        cutoff = datetime.now() - timedelta(days=self._retention_days)
+        for path in self.log_dir.glob("*.jsonl"):
+            try:
+                modified_at = datetime.fromtimestamp(path.stat().st_mtime)
+                if modified_at < cutoff:
+                    path.unlink()
+            except Exception as e:  # noqa: BLE001
+                logger.warning(f"Failed to cleanup audit log {path}: {e}")

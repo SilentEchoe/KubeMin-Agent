@@ -159,6 +159,15 @@ class KubeMinConfig(BaseModel):
     default_namespace: str = "default"
 
 
+class StorageConfig(BaseModel):
+    """Session and audit persistence governance configuration."""
+
+    retention_days: int = 30
+    audit_file_max_mb: int = 50
+    session_file_max_mb: int = 50
+    session_cache_messages: int = 200
+
+
 class ControlBusConfig(BaseModel):
     """MessageBus runtime constraints for backpressure and isolation."""
 
@@ -219,6 +228,7 @@ class Config(BaseSettings):
     tools: ToolsConfig = Field(default_factory=ToolsConfig)
     sandbox: SandboxConfig = Field(default_factory=SandboxConfig)
     kubemin: KubeMinConfig = Field(default_factory=KubeMinConfig)
+    storage: StorageConfig = Field(default_factory=StorageConfig)
     control: ControlConfig = Field(default_factory=ControlConfig)
     evaluation: EvaluationConfig = Field(default_factory=EvaluationConfig)
     validator: ValidatorConfig = Field(default_factory=ValidatorConfig)

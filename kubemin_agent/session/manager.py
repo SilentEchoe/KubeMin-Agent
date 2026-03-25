@@ -1,6 +1,7 @@
 """Session manager for conversation persistence."""
 
 import json
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -16,10 +17,22 @@ class SessionManager:
 
     MAX_HISTORY = 50
 
-    def __init__(self, workspace: Path) -> None:
+    def __init__(
+        self,
+        workspace: Path,
+        max_history: int = 50,
+        cache_message_limit: int = 200,
+        file_max_mb: int = 50,
+        retention_days: int = 30,
+    ) -> None:
         self.sessions_dir = workspace.parent / "sessions"
         self.sessions_dir.mkdir(parents=True, exist_ok=True)
         self._cache: dict[str, list[dict[str, Any]]] = {}
+        self._max_history = max(1, max_history)
+        self._cache_message_limit = max(2, cache_message_limit)
+        self._session_file_max_bytes = max(1, file_max_mb) * 1024 * 1024
+        self._retention_days = max(1, retention_days)
+        self._cleanup_old_session_files()
 
     def _session_path(self, session_key: str) -> Path:
         """Get the file path for a session."""
@@ -37,7 +50,7 @@ class SessionManager:
             List of message dicts.
         """
         if session_key in self._cache:
-            return self._cache[session_key][-self.MAX_HISTORY :]
+            return self._cache[session_key][-self._max_history :]
 
         path = self._session_path(session_key)
         if not path.exists():
@@ -53,8 +66,8 @@ class SessionManager:
             logger.warning(f"Failed to load session {session_key}: {e}")
             messages = []
 
-        self._cache[session_key] = messages
-        return messages[-self.MAX_HISTORY :]
+        self._cache[session_key] = messages[-self._cache_message_limit :]
+        return self._cache[session_key][-self._max_history :]
 
     def save_turn(self, session_key: str, user_message: str, assistant_response: str) -> None:
         """
@@ -73,12 +86,14 @@ class SessionManager:
 
         self._cache[session_key].append(user_msg)
         self._cache[session_key].append(assistant_msg)
+        self._cache[session_key] = self._cache[session_key][-self._cache_message_limit :]
 
         # Append to file
         path = self._session_path(session_key)
         with open(path, "a", encoding="utf-8") as f:
             f.write(json.dumps(user_msg, ensure_ascii=False) + "\n")
             f.write(json.dumps(assistant_msg, ensure_ascii=False) + "\n")
+        self._truncate_session_file(path)
 
     def clear(self, session_key: str) -> None:
         """Clear a session's history."""
@@ -125,20 +140,20 @@ class SessionManager:
     def init_active_plan_doc(self, session_key: str, original_message: str, tasks: list[Any]) -> Path:
         """Initialize the active plan markdown document."""
         path = self._active_plan_doc_path(session_key)
-        
+
         lines = [
-            f"# Active Execution Plan",
-            f"\n## Objective",
+            "# Active Execution Plan",
+            "\n## Objective",
             f"{original_message}",
-            f"\n## Tasks",
+            "\n## Tasks",
         ]
-        
+
         for t in tasks:
             task_id = getattr(t, 'task_id', t.get('task_id') if isinstance(t, dict) else 'unknown')
             agent = getattr(t, 'agent_name', t.get('agent_name') if isinstance(t, dict) else 'unknown')
             desc = getattr(t, 'description', t.get('description') if isinstance(t, dict) else 'unknown')
             lines.append(f"- [ ] **{task_id}** ({agent}): {desc}")
-            
+
         path.write_text("\n".join(lines), encoding="utf-8")
         return path
 
@@ -147,10 +162,10 @@ class SessionManager:
         path = self._active_plan_doc_path(session_key)
         if not path.exists():
             return
-            
+
         content = path.read_text(encoding="utf-8")
         lines = content.splitlines()
-        
+
         for i, line in enumerate(lines):
             if line.startswith("- [") and f"**{task_id}**" in line:
                 # Replace the checkbox marker (e.g. "- [ ]" or "- [-]") with the new status
@@ -163,10 +178,51 @@ class SessionManager:
                     new_line += f" -> *Result: {snippet}*"
                 lines[i] = new_line
                 break
-                
+
         path.write_text("\n".join(lines), encoding="utf-8")
 
     def get_active_plan_doc_path(self, session_key: str) -> Path | None:
         """Get the path to the active plan doc if it exists."""
         path = self._active_plan_doc_path(session_key)
         return path if path.exists() else None
+
+    def _truncate_session_file(self, path: Path) -> None:
+        """Truncate oversized session files while preserving recent messages."""
+        try:
+            if not path.exists() or path.stat().st_size <= self._session_file_max_bytes:
+                return
+            lines = [line for line in path.read_text(encoding="utf-8").splitlines() if line]
+            min_keep_lines = min(len(lines), 2)
+            selected_reversed: list[str] = []
+            selected_bytes = 0
+            for line in reversed(lines):
+                line_bytes = len(line.encode("utf-8")) + 1
+                over_limit = selected_bytes + line_bytes > self._session_file_max_bytes
+                if over_limit and len(selected_reversed) >= min_keep_lines:
+                    break
+                selected_reversed.append(line)
+                selected_bytes += line_bytes
+            trimmed = list(reversed(selected_reversed))
+            content = "\n".join(trimmed)
+            if content:
+                content += "\n"
+            path.write_text(content, encoding="utf-8")
+            logger.info(
+                "Session file truncated: "
+                f"{path.name}, lines={len(trimmed)}, bytes={len(content.encode('utf-8'))}"
+            )
+        except Exception as e:  # noqa: BLE001
+            logger.warning(f"Failed to truncate session file {path}: {e}")
+
+    def _cleanup_old_session_files(self) -> None:
+        """Cleanup expired session artifacts according to retention policy."""
+        cutoff = datetime.now() - timedelta(days=self._retention_days)
+        for path in self.sessions_dir.glob("*"):
+            if not path.is_file():
+                continue
+            try:
+                modified_at = datetime.fromtimestamp(path.stat().st_mtime)
+                if modified_at < cutoff:
+                    path.unlink()
+            except Exception as e:  # noqa: BLE001
+                logger.warning(f"Failed to cleanup expired session file {path}: {e}")
