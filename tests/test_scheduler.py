@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import time
 from pathlib import Path
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -277,3 +278,41 @@ async def test_scheduler_passes_dependency_context_envelope(tmp_path: Path) -> N
     assert "[SHARED TASK CONTEXT]" in prompt
     assert "t1" in prompt
     assert "collect cluster status" in prompt or "general:collect cluster status" in prompt
+
+
+@pytest.mark.asyncio
+async def test_scheduler_facade_analyze_intent_delegates_to_planner(tmp_path: Path) -> None:
+    scheduler, _registry = _build_scheduler(tmp_path)
+    expected = DispatchPlan(
+        tasks=[SubTask(task_id="t1", agent_name="general", description="delegated")],
+        execution_mode="sequential",
+    )
+    scheduler._intent_planner.analyze_intent = AsyncMock(return_value=expected)
+
+    result = await scheduler.analyze_intent("hello")
+    assert result == expected
+    scheduler._intent_planner.analyze_intent.assert_awaited_once_with("hello")
+
+
+@pytest.mark.asyncio
+async def test_scheduler_facade_execute_plan_delegates_to_executor(tmp_path: Path) -> None:
+    scheduler, _registry = _build_scheduler(tmp_path)
+    plan = DispatchPlan(
+        tasks=[SubTask(task_id="t1", agent_name="general", description="delegated")],
+        execution_mode="sequential",
+    )
+    scheduler._plan_executor.execute_plan = AsyncMock(return_value="executor-result")
+
+    result = await scheduler.execute_plan(
+        plan=plan,
+        original_message="root",
+        session_key="cli:test",
+        request_id="req-bridge",
+    )
+    assert result == "executor-result"
+    scheduler._plan_executor.execute_plan.assert_awaited_once_with(
+        plan=plan,
+        original_message="root",
+        session_key="cli:test",
+        request_id="req-bridge",
+    )
