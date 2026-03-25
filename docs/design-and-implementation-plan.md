@@ -76,6 +76,12 @@
   - `orchestrator-delegation`
 - 新增 Skill 规范文档：`docs/skills-spec.md`
 
+### 0.7 增量更新（2026-03-25，文档治理）
+
+- 新增 `docs/加强需求表单-2026-03-25.md`，沉淀可执行优化清单（R-001 ~ R-010）
+- 修正 `README.md` 环境变量示例，和 `Config.env_prefix=KUBEMIN_AGENT_` 语义对齐
+- 对齐 `docs/context-engineering.md` 的链路描述与“控制面默认 + legacy 兼容”现状
+
 ---
 
 ## 1. 项目定位与目标

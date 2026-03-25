@@ -6,7 +6,7 @@
 
 适用范围:
 - 控制面主链路: `ControlPlaneRuntime -> Scheduler -> SubAgent`
-- 兼容链路: `AgentLoop` (legacy)
+- 兼容链路: `AgentLoop` (legacy, 非默认)
 - 上下文相关组件: `ContextBuilder`、`SessionManager`、`MemoryStore`、工具结果、审计与评估
 
 ---
@@ -34,7 +34,7 @@
 
 ---
 
-## 4. 当前实现基线 (As-Is, 2026-02-27)
+## 4. 当前实现基线 (As-Is, 2026-03-25)
 
 ### 4.1 链路现状
 
@@ -44,17 +44,17 @@
 | 兼容链路 (`agent/loop.py`) | 保留 | `ContextBuilder` 已接入同一预算策略与任务锚点 |
 
 结论:
-- 两条链路已在上下文策略上收敛，`ContextBuilder` 仍作为 legacy 路径装配器保留。
+- 运行入口默认使用控制面主链路，legacy `AgentLoop` 仅保留兼容用途。
 
 ### 4.2 上下文来源与处理策略
 
 | 信息类型 | 当前行为 | 代码位置 |
 |---|---|---|
 | System Prompt | 每个子 Agent 固定 prompt | `kubemin_agent/agents/*.py` |
-| 对话历史 | token 预算裁剪 + 最近消息兜底 | `kubemin_agent/agents/base.py`, `agent/context.py` |
-| 任务目标 | `TASK ANCHOR` + 每轮 `TASK REMINDER` | `kubemin_agent/agents/base.py`, `agent/context.py` |
-| 记忆 | `MemoryStore.get_context(top_k=5)` | `kubemin_agent/agent/context.py`, `agent/memory/store.py` |
-| Skills | 按 `agents/triggers/always` 选择性注入（Control Plane + legacy） | `kubemin_agent/agent/skills.py`, `agents/base.py` |
+| 对话历史 | token 预算裁剪 + 最近消息兜底 | `kubemin_agent/agents/base.py`, `kubemin_agent/agent/context.py` |
+| 任务目标 | `TASK ANCHOR` + 每轮 `TASK REMINDER` | `kubemin_agent/agents/base.py`, `kubemin_agent/agent/context.py` |
+| 记忆 | 查询驱动召回（`query=task_message`） | `kubemin_agent/agents/base.py`, `kubemin_agent/agent/memory/store.py`, `kubemin_agent/agent/context.py` |
+| Skills | 按 `agents/triggers/always` 选择性注入（Control Plane + legacy） | `kubemin_agent/agent/skills.py`, `kubemin_agent/agents/base.py` |
 | Browser snapshot | 4000 字符截断 | `kubemin_agent/agent/tools/browser.py` |
 | Content audit text/console | 1000 字符预览截断 | `kubemin_agent/agent/tools/content_audit.py` |
 
@@ -90,7 +90,7 @@
 
 ### 5.2 主要技术债
 
-1. **上下文策略分叉**: 主链路与 `ContextBuilder` 双轨并存，策略难统一演进。
+1. **预算策略可观测性不足**: 虽已采用 token 预算裁剪，但缺少统一预算报告与告警指标输出。
 2. **缺少预算编排器**: 无统一 token 预算分配逻辑，复杂任务稳定性风险高。
 3. **压缩策略偏静态**: 以字符截断为主，缺少语义保真摘要。
 4. **跨 Agent 上下文弱耦合**: 多任务编排时共享信息复用不足。
@@ -121,7 +121,7 @@ flowchart LR
 
 ### 6.2 统一上下文契约
 
-建议引入统一数据对象 `ContextEnvelope` (后续实现):
+统一数据对象 `ContextEnvelope`（已实现并在调度链路使用）:
 - `task_summary`: 任务摘要
 - `hard_constraints`: 不可违背约束 (安全/策略)
 - `relevant_history`: 相关历史片段
@@ -129,7 +129,7 @@ flowchart LR
 - `tool_findings`: 结构化工具发现
 - `budget_report`: token 预算分配与消耗
 
-目标: 控制面主链路与 legacy 链路复用同一上下文装配规范。
+目标: 在控制面主链路内保持上下文契约稳定并持续优化预算与压缩策略。
 
 ---
 
@@ -248,7 +248,7 @@ flowchart LR
 |---|---|---|
 | 轨迹日志膨胀 | 存储与检索成本上升 | `max_trace_steps` + preview 截断 + 生命周期清理 |
 | LLM 裁判波动 | 评分稳定性下降 | 规则分兜底 + 低温度 + 结果回退策略 |
-| 上下文策略分叉长期存在 | 维护复杂度上升 | 在 M2 统一 Context Planner 接口 |
+| 预算策略不透明 | 调参效率下降 | 增加预算明细输出与可观测指标 |
 | 过度压缩导致信息丢失 | 任务质量下降 | 摘要前后 A/B 对比与关键字段白名单 |
 
 ---
@@ -267,7 +267,7 @@ flowchart LR
 
 | 日期 | 变更 | 原因 |
 |---|---|---|
+| 2026-03-25 | 文档与实现对齐：移除 legacy 链路描述，统一为控制面主链路事实 | 遵循 Docs-First，确保文档即真相 |
 | 2026-02-28 | M3-M5 核心能力落地：语义摘要层、跨 Agent `ContextEnvelope`、查询驱动记忆注入 | 提升复杂任务信息复用与上下文效率，减少硬截断信息损失 |
-| 2026-02-27 | legacy AgentLoop 收敛到与控制面一致的上下文预算与任务锚点策略 | 消除执行链路策略分叉，提升行为一致性 |
 | 2026-02-27 | M2 核心能力落地: 控制面子 Agent 接入动态上下文预算与任务锚点 | 解决长任务目标漂移与固定 10 轮窗口问题 |
 | 2026-02-27 | 重构文档为专业版上下文工程设计与路线图，纳入在线评估与可观测能力 | 对齐当前实现，提供可执行演进计划 |

@@ -205,9 +205,9 @@ ruff check .
 
 - **Tool Calling 支持**：KubeMin-Agent 重度依赖 Function Calling 能力。请确保所选模型支持 tool/function calling（如 Claude 3.5+、GPT-4o、Kimi moonshot-v1 等）。
 - **Kimi 等国产模型**：对于复杂的多步推理任务，tool calling 质量可能不如 Claude / GPT-4o 稳定，建议先在简单场景下验证。
-- **环境变量**：也可以通过环境变量配置，前缀为 `KUBEMIN_AGENT__`，嵌套用双下划线分隔，例如：
+- **环境变量**：也可以通过环境变量配置，前缀为 `KUBEMIN_AGENT_`，嵌套字段之间用双下划线分隔，例如：
   ```bash
-  export KUBEMIN_AGENT__PROVIDERS__OPENAI__API_KEY="你的 Key"
+  export KUBEMIN_AGENT_PROVIDERS__OPENAI__API_KEY="你的 Key"
   ```
 
 ---
