@@ -39,7 +39,6 @@ def test_check_safety_valid(tool):
     """Test safe commands pass the safety check."""
     assert tool._check_safety("ls -la") is None
     assert tool._check_safety("cat /etc/hosts") is None
-    assert tool._check_safety("pip install pytest") is None
     assert tool._check_safety("echo 'hello'") is None
     assert tool._check_safety("git clone https://x") is None
 
@@ -59,6 +58,9 @@ def test_check_safety_unknown_commands(tool):
     assert "not in the allowed list" in tool._check_safety("nmap 127.0.0.1")
     assert "not in the allowed list" in tool._check_safety("terraform apply")
     assert "not in the allowed list" in tool._check_safety("docker run")
+    assert "not in the allowed list" in tool._check_safety("python3 script.py")
+    assert "not in the allowed list" in tool._check_safety("pip install pytest")
+    assert "not in the allowed list" in tool._check_safety("npm run build")
 
 
 def test_check_safety_malformed(tool):

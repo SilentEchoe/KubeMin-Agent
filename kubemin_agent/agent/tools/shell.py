@@ -19,13 +19,12 @@ from kubemin_agent.agent.tools.sandbox import (
 _ALLOWED_COMMANDS = {
     "ls", "cat", "echo", "grep", "find", "wc", "head", "tail",
     "pwd", "env", "date", "curl", "wget",
-    "git", "python3", "python", "pip", "node", "npm", "npx",
+    "git",
     "kubectl", "helm",
     "sort", "uniq", "diff", "tr", "cut", "awk", "sed",
     "du", "df", "file", "which", "whoami", "uname",
     "tar", "zip", "unzip", "gzip", "gunzip",
     "jq", "yq",
-    "make", "go", "cargo", "rustc",
     "ruff", "mypy", "pytest", "black", "isort",
 }
 
