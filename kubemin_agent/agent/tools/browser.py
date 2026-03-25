@@ -111,134 +111,140 @@ class BrowserTool(Tool):
                 url = kwargs.get("url", "")
                 if not url:
                     return "Error: 'url' is required for navigate action"
-                
-                # Check domain whitelist if configured
+
                 if self._allowed_domain:
                     parsed = urlparse(url)
                     target_domain = parsed.hostname or ""
-                    # Check if target domain equals or is a subdomain of the allowed domain
-                    if target_domain != self._allowed_domain and not target_domain.endswith(f".{self._allowed_domain}"):
-                        return f"Error: Navigation to '{target_domain}' blocked by domain whitelist policy (allowed: {self._allowed_domain})."
+                    if (
+                        target_domain != self._allowed_domain
+                        and not target_domain.endswith(f".{self._allowed_domain}")
+                    ):
+                        return (
+                            f"Error: Navigation to '{target_domain}' blocked by domain whitelist "
+                            f"policy (allowed: {self._allowed_domain})."
+                        )
 
                 result = await self._mcp.call_tool("navigate_page", {"url": url})
-                # Inject visual cursor assets after navigation
                 await self._mcp.inject_ui_assets()
-                return result
 
             elif action == "click":
                 uid = kwargs.get("uid", "")
                 if not uid:
                     return "Error: 'uid' is required. Use 'snapshot' first to get element uids."
-                
+
                 coords = await self._mcp.get_element_coordinates(uid)
                 if coords:
                     await self._mcp.animate_cursor(coords[0], coords[1], is_click=True)
                     if self._mcp._step_delay <= 0:
-                        await asyncio.sleep(0.4) # Wait for animation even if step_delay is 0
+                        await asyncio.sleep(0.4)
 
-                return await self._mcp.call_tool("click", {"uid": uid, "includeSnapshot": True})
+                result = await self._mcp.call_tool("click", {"uid": uid, "includeSnapshot": True})
 
             elif action == "fill":
                 uid = kwargs.get("uid", "")
                 value = kwargs.get("value", "")
                 if not uid:
                     return "Error: 'uid' is required. Use 'snapshot' first to get element uids."
-                
+
                 coords = await self._mcp.get_element_coordinates(uid)
                 if coords:
                     await self._mcp.animate_cursor(coords[0], coords[1], is_click=True)
                     if self._mcp._step_delay <= 0:
                         await asyncio.sleep(0.4)
 
-                return await self._mcp.call_tool("fill", {"uid": uid, "value": value, "includeSnapshot": True})
+                result = await self._mcp.call_tool(
+                    "fill", {"uid": uid, "value": value, "includeSnapshot": True}
+                )
 
             elif action == "hover":
                 uid = kwargs.get("uid", "")
                 if not uid:
                     return "Error: 'uid' is required."
-                
+
                 coords = await self._mcp.get_element_coordinates(uid)
                 if coords:
                     await self._mcp.animate_cursor(coords[0], coords[1])
                     if self._mcp._step_delay <= 0:
                         await asyncio.sleep(0.4)
 
-                return await self._mcp.call_tool("hover", {"uid": uid, "includeSnapshot": True})
+                result = await self._mcp.call_tool("hover", {"uid": uid, "includeSnapshot": True})
 
             elif action == "drag":
                 from_uid = kwargs.get("uid", "")
                 to_uid = kwargs.get("to_uid", "")
                 if not from_uid or not to_uid:
                     return "Error: 'uid' and 'to_uid' are required for drag."
-                
-                # Animate to source then to target
+
                 from_coords = await self._mcp.get_element_coordinates(from_uid)
                 to_coords = await self._mcp.get_element_coordinates(to_uid)
                 if from_coords and to_coords:
                     await self._mcp.animate_cursor(from_coords[0], from_coords[1])
-                    await asyncio.sleep(0.4) # Wait for move
+                    await asyncio.sleep(0.4)
                     await self._mcp.animate_cursor(to_coords[0], to_coords[1])
                     if self._mcp._step_delay <= 0:
-                        await asyncio.sleep(0.4) # Wait for move to target
+                        await asyncio.sleep(0.4)
 
-                return await self._mcp.call_tool("drag", {"from_uid": from_uid, "to_uid": to_uid})
+                result = await self._mcp.call_tool(
+                    "drag", {"from_uid": from_uid, "to_uid": to_uid}
+                )
 
             elif action == "scroll":
                 direction = kwargs.get("value", "down").lower()
                 key = "Page_Down" if direction != "up" else "Page_Up"
-                return await self._mcp.call_tool("press_key", {"key": key})
+                result = await self._mcp.call_tool("press_key", {"key": key})
 
             elif action == "wait":
-                # wait_for expects a description of what to wait for
                 value = kwargs.get("value", "page to load")
                 timeout = kwargs.get("timeout", 5000)
-                return await self._mcp.call_tool("wait_for", {
-                    "event": value,
-                    "timeout": timeout,
-                })
+                result = await self._mcp.call_tool(
+                    "wait_for",
+                    {
+                        "event": value,
+                        "timeout": timeout,
+                    },
+                )
 
             elif action == "evaluate":
                 value = kwargs.get("value", "")
                 if not value:
                     return "Error: 'value' (JavaScript code) is required."
-                
-                # Strict Regex blocks for malicious network exfiltration strings
-                forbidden_patterns = [r"\bfetch\s*\(", r"\bXMLHttpRequest\b", r"\bWebSocket\b", r"\bsetTimeout\b", r"\bsetInterval\b"]
+
+                forbidden_patterns = [
+                    r"\bfetch\s*\(",
+                    r"\bXMLHttpRequest\b",
+                    r"\bWebSocket\b",
+                    r"\bsetTimeout\b",
+                    r"\bsetInterval\b",
+                ]
                 for pattern in forbidden_patterns:
                     if re.search(pattern, value):
-                        return f"Error: Security policy violation. The keyword/pattern '{pattern}' is blocked in evaluate."
+                        return (
+                            "Error: Security policy violation. The keyword/pattern "
+                            f"'{pattern}' is blocked in evaluate."
+                        )
 
-                result = await self._mcp.call_tool("evaluate_script", {"function": value})
-                return self._summarizer.summarize(
-                    result,
-                    title="browser_evaluate",
-                )
+                raw = await self._mcp.call_tool("evaluate_script", {"function": value})
+                result = self._summarizer.summarize(raw, title="browser_evaluate")
 
             elif action == "snapshot":
-                result = await self._mcp.call_tool("take_snapshot", {})
-                return self._summarizer.summarize(
-                    result,
+                raw = await self._mcp.call_tool("take_snapshot", {})
+                result = self._summarizer.summarize(
+                    raw,
                     title="browser_snapshot",
                     extra_signal_patterns=[r"\bbutton\b", r"\blink\b", r"\binput\b", r"\buid\b"],
                 )
 
             elif action == "press_key":
                 key = kwargs.get("value", "Enter")
-                return await self._mcp.call_tool("press_key", {"key": key})
+                result = await self._mcp.call_tool("press_key", {"key": key})
 
             elif action == "console_logs":
-                result = await self._mcp.call_tool("list_console_messages", {})
-                return self._summarizer.summarize(
-                    result,
-                    title="browser_console_logs",
-                )
+                raw = await self._mcp.call_tool("list_console_messages", {})
+                result = self._summarizer.summarize(raw, title="browser_console_logs")
 
             elif action == "network":
-                result = await self._mcp.call_tool("list_network_requests", {})
-                return self._summarizer.summarize(
-                    result,
-                    title="browser_network_requests",
-                )
+                raw = await self._mcp.call_tool("list_network_requests", {})
+                result = self._summarizer.summarize(raw, title="browser_network_requests")
 
             elif action == "mock_network":
                 value = kwargs.get("value", "{}")
@@ -262,8 +268,8 @@ class BrowserTool(Tool):
                     return "Network mocking applied for endpoints: " + Object.keys(window.__mockData).join(", ");
                 }})();
                 """
-                result = await self._mcp.call_tool("evaluate_script", {"function": js})
-                return self._summarizer.summarize(result, title="mock_network")
+                raw = await self._mcp.call_tool("evaluate_script", {"function": js})
+                result = self._summarizer.summarize(raw, title="mock_network")
 
             elif action == "throttle_network":
                 delay_ms = kwargs.get("value", "2000")
@@ -279,8 +285,8 @@ class BrowserTool(Tool):
                     return "Network throttled by " + window.__throttleMs + "ms";
                 }})();
                 """
-                result = await self._mcp.call_tool("evaluate_script", {"function": js})
-                return self._summarizer.summarize(result, title="throttle_network")
+                raw = await self._mcp.call_tool("evaluate_script", {"function": js})
+                result = self._summarizer.summarize(raw, title="throttle_network")
 
             elif action == "disconnect_network":
                 js = """
@@ -293,14 +299,17 @@ class BrowserTool(Tool):
                     return "Network disconnected (fetch operations will fail)";
                 })();
                 """
-                result = await self._mcp.call_tool("evaluate_script", {"function": js})
-                return self._summarizer.summarize(result, title="disconnect_network")
+                raw = await self._mcp.call_tool("evaluate_script", {"function": js})
+                result = self._summarizer.summarize(raw, title="disconnect_network")
 
             else:
                 return f"Error: Unknown action '{action}'"
-            
-            # Wrap successful outputs as untrusted content to prevent prompt injection
-            return f"<untrusted_game_content>\n{result}\n</untrusted_game_content>"
+
+            return self._wrap_untrusted_output(result)
 
         except Exception as e:
             return f"Browser error ({action}): {type(e).__name__}: {str(e)}"
+
+    @staticmethod
+    def _wrap_untrusted_output(result: str) -> str:
+        return f"<untrusted_game_content>\n{result}\n</untrusted_game_content>"

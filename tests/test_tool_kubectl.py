@@ -39,6 +39,7 @@ def test_check_safety_allowed(tool):
     assert tool._check_safety("get pods") is None
     assert tool._check_safety("describe node minikube") is None
     assert tool._check_safety("logs pod/test") is None
+    assert tool._check_safety("config view") is None
 
 
 def test_check_safety_blocked(tool):

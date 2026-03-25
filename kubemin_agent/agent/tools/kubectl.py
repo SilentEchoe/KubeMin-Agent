@@ -133,8 +133,8 @@ class KubectlTool(Tool):
         if not parts:
             return "Error: empty kubectl command"
 
-        # Extract the sub-command (first arg)
-        sub_cmd = parts[0].lower()
+        # Extract single-word and multi-word sub-command (e.g. "config view")
+        sub_cmd = self._extract_subcommand(parts)
 
         if sub_cmd in _BLOCKED_SUBCOMMANDS:
             return (
@@ -158,6 +158,15 @@ class KubectlTool(Tool):
                 )
 
         return None
+
+    def _extract_subcommand(self, parts: list[str]) -> str:
+        """Extract kubectl sub-command, supporting multi-word forms."""
+        first = parts[0].lower()
+        if len(parts) >= 2:
+            multi_word = f"{first} {parts[1].lower()}"
+            if multi_word in _ALLOWED_SUBCOMMANDS or multi_word in _BLOCKED_SUBCOMMANDS:
+                return multi_word
+        return first
 
     def _extract_namespace(self, parts: list[str]) -> str | None:
         """Extract namespace from command args."""

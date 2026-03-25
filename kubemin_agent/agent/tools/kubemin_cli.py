@@ -90,8 +90,10 @@ class KubeMinCliTool(Tool):
         if safety_error:
             return safety_error
 
+        normalized_command = self._normalize_command(command)
+
         # Inject default flags
-        full_command = self._inject_defaults(command)
+        full_command = self._inject_defaults(normalized_command)
 
         try:
             proc = await asyncio.create_subprocess_shell(
@@ -128,6 +130,24 @@ class KubeMinCliTool(Tool):
             )
 
         return result
+
+    def _normalize_command(self, command: str) -> str:
+        """Normalize command so execution always starts with explicit kubemin-cli."""
+        try:
+            parts = shlex.split(command)
+        except ValueError:
+            parts = command.split()
+
+        if not parts:
+            return "kubemin-cli"
+
+        base = parts[0].split("/")[-1]
+        if base in ("kubemin-cli", "kubemin"):
+            parts[0] = "kubemin-cli"
+        else:
+            parts.insert(0, "kubemin-cli")
+
+        return " ".join(shlex.quote(p) for p in parts)
 
     def _check_safety(self, command: str) -> str | None:
         """Validate command is read-only and safe. Returns error string or None."""

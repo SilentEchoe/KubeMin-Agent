@@ -15,8 +15,10 @@ async def test_browser_snapshot_uses_semantic_summary_for_long_output() -> None:
 
     result = await tool.execute(action="snapshot")
 
+    assert result.startswith("<untrusted_game_content>")
     assert "[Semantic Summary] browser_snapshot" in result
     assert "uid=1 button start" in result
+    assert result.endswith("</untrusted_game_content>")
 
 
 @pytest.mark.asyncio
@@ -45,6 +47,7 @@ async def test_browser_console_and_network_use_summary_for_long_output() -> None
 @pytest.mark.asyncio
 async def test_browser_domain_whitelist() -> None:
     mcp = AsyncMock()
+    mcp.call_tool.return_value = "ok"
     tool = BrowserTool(mcp, allowed_domain="example.com")
 
     # Allowed navigations

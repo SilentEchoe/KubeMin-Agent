@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from unittest.mock import ANY, AsyncMock, patch
+
 import pytest
 
 from kubemin_agent.agent.tools.kubemin_cli import KubeMinCliTool
@@ -150,6 +152,14 @@ class TestKubeMinCliToolDefaults:
         assert "--api-base" not in result
         assert "--namespace" not in result
 
+    def test_normalize_adds_kubemin_cli_prefix(self, tool: KubeMinCliTool) -> None:
+        result = tool._normalize_command("get apps --status failed")
+        assert result.startswith("kubemin-cli ")
+
+    def test_normalize_rewrites_kubemin_alias(self, tool: KubeMinCliTool) -> None:
+        result = tool._normalize_command("kubemin get apps")
+        assert result.startswith("kubemin-cli ")
+
 
 class TestKubeMinCliToolExecution:
     """Test actual command execution with safety blocking."""
@@ -164,3 +174,24 @@ class TestKubeMinCliToolExecution:
         # Should not crash with extreme values
         result = await tool.execute(command="kubemin-cli delete app x", timeout=999)
         assert "Error" in result  # blocked by safety, not timeout
+
+    @pytest.mark.asyncio
+    @patch("kubemin_agent.agent.tools.kubemin_cli.asyncio.create_subprocess_shell")
+    async def test_execute_enforces_normalized_prefix(
+        self,
+        mock_create_proc,
+        tool: KubeMinCliTool,
+    ) -> None:
+        mock_proc = AsyncMock()
+        mock_proc.returncode = 0
+        mock_proc.communicate.return_value = (b"ok", b"")
+        mock_create_proc.return_value = mock_proc
+
+        result = await tool.execute(command="get apps")
+
+        assert "ok" in result
+        mock_create_proc.assert_called_once_with(
+            "kubemin-cli get apps",
+            stdout=ANY,
+            stderr=ANY,
+        )
