@@ -40,6 +40,8 @@ def mock_config(tmp_path: Path):
     mock_cfg.control.bus.inbound_maxsize = 200
     mock_cfg.control.bus.outbound_maxsize = 200
     mock_cfg.control.bus.subscriber_timeout_seconds = 5.0
+    mock_cfg.control.bus.subscriber_retry_count = 0
+    mock_cfg.control.bus.subscriber_retry_backoff_seconds = 0.2
 
     mock_cfg.evaluation.enabled = False
     mock_cfg.evaluation.mode = "standard"
@@ -60,11 +62,15 @@ def test_build_message_bus_from_control_config(mock_config):
     mock_config.control.bus.inbound_maxsize = 7
     mock_config.control.bus.outbound_maxsize = 8
     mock_config.control.bus.subscriber_timeout_seconds = 1.5
+    mock_config.control.bus.subscriber_retry_count = 2
+    mock_config.control.bus.subscriber_retry_backoff_seconds = 0.3
 
     bus = _build_message_bus(mock_config)
     assert bus.inbound.maxsize == 7
     assert bus.outbound.maxsize == 8
     assert bus._subscriber_timeout_seconds == 1.5
+    assert bus._subscriber_retry_count == 2
+    assert bus._subscriber_retry_backoff_seconds == 0.3
 
 
 @patch("kubemin_agent.cli.commands.save_default_config")

@@ -180,6 +180,8 @@ class ControlBusConfig(BaseModel):
     inbound_maxsize: int = 200
     outbound_maxsize: int = 200
     subscriber_timeout_seconds: float = 5.0
+    subscriber_retry_count: int = 0
+    subscriber_retry_backoff_seconds: float = 0.2
 
 
 class ControlConfig(BaseModel):

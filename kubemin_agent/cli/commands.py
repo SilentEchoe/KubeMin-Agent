@@ -41,6 +41,8 @@ def _build_message_bus(config):
         inbound_maxsize=config.control.bus.inbound_maxsize,
         outbound_maxsize=config.control.bus.outbound_maxsize,
         subscriber_timeout_seconds=config.control.bus.subscriber_timeout_seconds,
+        subscriber_retry_count=config.control.bus.subscriber_retry_count,
+        subscriber_retry_backoff_seconds=config.control.bus.subscriber_retry_backoff_seconds,
     )
 
 

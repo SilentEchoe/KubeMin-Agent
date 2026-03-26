@@ -21,6 +21,8 @@ class MessageBus:
         inbound_maxsize: int = 200,
         outbound_maxsize: int = 200,
         subscriber_timeout_seconds: float = 5.0,
+        subscriber_retry_count: int = 0,
+        subscriber_retry_backoff_seconds: float = 0.2,
     ) -> None:
         self.inbound: asyncio.Queue[InboundMessage] = asyncio.Queue(
             maxsize=max(1, inbound_maxsize)
@@ -32,6 +34,8 @@ class MessageBus:
             str, list[Callable[[OutboundMessage], Awaitable[None]]]
         ] = {}
         self._subscriber_timeout_seconds = max(0.1, subscriber_timeout_seconds)
+        self._subscriber_retry_count = max(0, subscriber_retry_count)
+        self._subscriber_retry_backoff_seconds = max(0.0, subscriber_retry_backoff_seconds)
         self._running = False
 
     async def publish_inbound(self, msg: InboundMessage) -> None:
@@ -85,18 +89,36 @@ class MessageBus:
         callback: Callable[[OutboundMessage], Awaitable[None]],
     ) -> None:
         """Dispatch outbound message to a subscriber with timeout isolation."""
-        try:
-            await asyncio.wait_for(
-                callback(msg),
-                timeout=self._subscriber_timeout_seconds,
-            )
-        except asyncio.TimeoutError:
-            logger.warning(
-                "Subscriber timeout while dispatching outbound message: "
-                f"channel={msg.channel}, timeout={self._subscriber_timeout_seconds}s"
-            )
-        except Exception as e:
-            logger.error(f"Error dispatching to {msg.channel}: {e}")
+        attempts = self._subscriber_retry_count + 1
+        for attempt in range(1, attempts + 1):
+            try:
+                await asyncio.wait_for(
+                    callback(msg),
+                    timeout=self._subscriber_timeout_seconds,
+                )
+                return
+            except asyncio.TimeoutError:
+                exhausted = attempt == attempts
+                logger.warning(
+                    "Subscriber timeout while dispatching outbound message: "
+                    f"channel={msg.channel}, timeout={self._subscriber_timeout_seconds}s, "
+                    f"attempt={attempt}/{attempts}"
+                )
+                if exhausted:
+                    return
+            except Exception as e:
+                exhausted = attempt == attempts
+                logger.error(
+                    "Error dispatching outbound message: "
+                    f"channel={msg.channel}, attempt={attempt}/{attempts}, error={e}"
+                )
+                if exhausted:
+                    return
+
+            if self._subscriber_retry_backoff_seconds > 0:
+                await asyncio.sleep(
+                    self._subscriber_retry_backoff_seconds * (2 ** (attempt - 1))
+                )
 
     def stop(self) -> None:
         """Stop the dispatcher loop."""

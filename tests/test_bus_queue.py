@@ -100,6 +100,46 @@ async def test_dispatch_single_subscriber_timeout_and_exception_logged() -> None
 
 
 @pytest.mark.asyncio
+async def test_dispatch_single_subscriber_retries_timeout_then_succeeds() -> None:
+    bus = MessageBus(
+        subscriber_timeout_seconds=0.01,
+        subscriber_retry_count=1,
+        subscriber_retry_backoff_seconds=0.0,
+    )
+    msg = OutboundMessage(channel="telegram", chat_id="chat-1", content="hello")
+    attempts = 0
+
+    async def _flaky_callback(_msg: OutboundMessage) -> None:
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            await asyncio.sleep(0.2)
+
+    await bus._dispatch_single_subscriber(msg, _flaky_callback)
+    assert attempts == 2
+
+
+@pytest.mark.asyncio
+async def test_dispatch_single_subscriber_retries_exception_then_succeeds() -> None:
+    bus = MessageBus(
+        subscriber_timeout_seconds=0.1,
+        subscriber_retry_count=2,
+        subscriber_retry_backoff_seconds=0.0,
+    )
+    msg = OutboundMessage(channel="telegram", chat_id="chat-1", content="hello")
+    attempts = 0
+
+    async def _flaky_callback(_msg: OutboundMessage) -> None:
+        nonlocal attempts
+        attempts += 1
+        if attempts < 2:
+            raise RuntimeError("transient error")
+
+    await bus._dispatch_single_subscriber(msg, _flaky_callback)
+    assert attempts == 2
+
+
+@pytest.mark.asyncio
 async def test_publish_consume_and_queue_size_properties() -> None:
     bus = MessageBus()
     inbound = InboundMessage(channel="cli", chat_id="c1", content="hi")
