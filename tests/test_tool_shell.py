@@ -245,3 +245,15 @@ def test_strict_path_guard_allows_workspace_relative_paths(tmp_path: Path):
 def test_strict_path_guard_can_be_disabled(tmp_path: Path):
     tool = ShellTool(workspace=tmp_path, strict_path_guard=False)
     assert tool._check_safety("cat /etc/hosts") is None
+
+
+def test_strict_path_guard_blocks_dynamic_expansion_paths(tmp_path: Path):
+    tool = ShellTool(workspace=tmp_path, strict_path_guard=True)
+    assert "strict_path_guard" in (tool._check_safety("cat $HOME/.ssh/id_rsa") or "")
+    assert "strict_path_guard" in (tool._check_safety("cat $(pwd)/../secret.txt") or "")
+
+
+def test_strict_path_guard_blocks_inline_redirection_targets(tmp_path: Path):
+    tool = ShellTool(workspace=tmp_path, strict_path_guard=True)
+    assert "strict_path_guard" in (tool._check_safety("echo hello >/etc/passwd") or "")
+    assert tool._check_safety("echo hello >./safe-output.txt") is None

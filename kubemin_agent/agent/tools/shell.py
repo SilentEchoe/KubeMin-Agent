@@ -226,6 +226,10 @@ class ShellTool(Tool):
                 if index + 1 < len(parts):
                     candidates.append(parts[index + 1])
                 continue
+            redirection_target = self._extract_inline_redirection_target(token)
+            if redirection_target:
+                candidates.append(redirection_target)
+                continue
             if token.startswith("--") and "=" in token:
                 _flag, value = token.split("=", 1)
                 candidates.append(value)
@@ -238,6 +242,11 @@ class ShellTool(Tool):
             if not self._looks_like_path(raw_token):
                 continue
             token = raw_token.strip()
+            if self._contains_dynamic_path(token):
+                return (
+                    "Error: command blocked by strict_path_guard. "
+                    f"Dynamic path token '{raw_token}' is not allowed in strict mode."
+                )
             path = Path(token).expanduser()
             if not path.is_absolute():
                 path = workspace_root / path
@@ -256,13 +265,25 @@ class ShellTool(Tool):
             return False
         if "://" in normalized:
             return False
-        if normalized.startswith("$"):
-            return False
+        if "$" in normalized or "`" in normalized:
+            return "/" in normalized
         if normalized in {".", ".."}:
             return True
         if normalized.startswith(("/", "./", "../", "~/")):
             return True
         return "/" in normalized
+
+    @staticmethod
+    def _contains_dynamic_path(token: str) -> bool:
+        return "$" in token or "`" in token
+
+    @staticmethod
+    def _extract_inline_redirection_target(token: str) -> str | None:
+        for operator in ("2>>", "2>", "1>", ">>", ">", "<"):
+            if token.startswith(operator):
+                target = token[len(operator):].strip()
+                return target or None
+        return None
 
     @staticmethod
     def _normalize_mode(mode: str) -> SandboxMode:
