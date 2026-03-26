@@ -1,6 +1,7 @@
 """Session manager for conversation persistence."""
 
 import json
+from collections import OrderedDict
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -22,14 +23,16 @@ class SessionManager:
         workspace: Path,
         max_history: int = 50,
         cache_message_limit: int = 200,
+        cache_session_limit: int = 200,
         file_max_mb: int = 50,
         retention_days: int = 30,
     ) -> None:
         self.sessions_dir = workspace.parent / "sessions"
         self.sessions_dir.mkdir(parents=True, exist_ok=True)
-        self._cache: dict[str, list[dict[str, Any]]] = {}
+        self._cache: OrderedDict[str, list[dict[str, Any]]] = OrderedDict()
         self._max_history = max(1, max_history)
         self._cache_message_limit = max(2, cache_message_limit)
+        self._cache_session_limit = max(1, cache_session_limit)
         self._session_file_max_bytes = max(1, file_max_mb) * 1024 * 1024
         self._retention_days = max(1, retention_days)
         self._cleanup_old_session_files()
@@ -50,24 +53,44 @@ class SessionManager:
             List of message dicts.
         """
         if session_key in self._cache:
+            self._cache.move_to_end(session_key)
             return self._cache[session_key][-self._max_history :]
 
-        path = self._session_path(session_key)
-        if not path.exists():
-            self._cache[session_key] = []
+        messages = self._load_messages_from_disk(session_key)
+        self._cache_session(session_key, messages)
+        return self._cache[session_key][-self._max_history :]
+
+    def get_history_page(
+        self,
+        session_key: str,
+        page: int = 1,
+        page_size: int = 50,
+    ) -> list[dict[str, Any]]:
+        """
+        Get paginated conversation history for a session.
+
+        Args:
+            session_key: Session identifier (format: channel:chat_id).
+            page: 1-based page index from newest to oldest.
+            page_size: Number of messages per page.
+
+        Returns:
+            A page of messages in chronological order.
+        """
+        if page <= 0 or page_size <= 0:
             return []
 
-        messages: list[dict[str, Any]] = []
-        try:
-            for line in path.read_text(encoding="utf-8").strip().split("\n"):
-                if line:
-                    messages.append(json.loads(line))
-        except Exception as e:
-            logger.warning(f"Failed to load session {session_key}: {e}")
-            messages = []
+        messages = self._load_messages_from_disk(session_key)
+        if not messages and session_key in self._cache:
+            messages = list(self._cache[session_key])
+        if not messages:
+            return []
 
-        self._cache[session_key] = messages[-self._cache_message_limit :]
-        return self._cache[session_key][-self._max_history :]
+        end = len(messages) - (page - 1) * page_size
+        if end <= 0:
+            return []
+        start = max(0, end - page_size)
+        return messages[start:end]
 
     def save_turn(self, session_key: str, user_message: str, assistant_response: str) -> None:
         """
@@ -78,15 +101,18 @@ class SessionManager:
             user_message: The user's message.
             assistant_response: The assistant's response.
         """
-        if session_key not in self._cache:
-            self._cache[session_key] = []
+        cached_messages = (
+            list(self._cache[session_key])
+            if session_key in self._cache
+            else self._load_messages_from_disk(session_key)
+        )
 
         user_msg = {"role": "user", "content": user_message}
         assistant_msg = {"role": "assistant", "content": assistant_response}
 
-        self._cache[session_key].append(user_msg)
-        self._cache[session_key].append(assistant_msg)
-        self._cache[session_key] = self._cache[session_key][-self._cache_message_limit :]
+        cached_messages.append(user_msg)
+        cached_messages.append(assistant_msg)
+        self._cache_session(session_key, cached_messages)
 
         # Append to file
         path = self._session_path(session_key)
@@ -222,6 +248,30 @@ class SessionManager:
             )
         except Exception as e:  # noqa: BLE001
             logger.warning(f"Failed to truncate session file {path}: {e}")
+
+    def _load_messages_from_disk(self, session_key: str) -> list[dict[str, Any]]:
+        """Load all messages for a session from disk."""
+        path = self._session_path(session_key)
+        if not path.exists():
+            return []
+
+        messages: list[dict[str, Any]] = []
+        try:
+            for line in path.read_text(encoding="utf-8").splitlines():
+                if line.strip():
+                    messages.append(json.loads(line))
+        except Exception as e:  # noqa: BLE001
+            logger.warning(f"Failed to load session {session_key}: {e}")
+            return []
+        return messages
+
+    def _cache_session(self, session_key: str, messages: list[dict[str, Any]]) -> None:
+        """Update in-memory cache with LRU eviction on session count."""
+        self._cache[session_key] = messages[-self._cache_message_limit :]
+        self._cache.move_to_end(session_key)
+        while len(self._cache) > self._cache_session_limit:
+            evicted_session_key, _ = self._cache.popitem(last=False)
+            logger.debug(f"Session cache evicted: {evicted_session_key}")
 
     def _cleanup_old_session_files(self) -> None:
         """Cleanup expired session artifacts according to retention policy."""

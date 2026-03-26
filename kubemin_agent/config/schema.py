@@ -172,6 +172,7 @@ class StorageConfig(BaseModel):
     audit_file_max_mb: int = 50
     session_file_max_mb: int = 50
     session_cache_messages: int = 200
+    session_cache_sessions: int = 200
 
 
 class ControlBusConfig(BaseModel):

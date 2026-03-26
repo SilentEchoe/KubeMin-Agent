@@ -65,6 +65,7 @@ class ControlPlaneRuntime:
         audit_file_max_mb: int = 50,
         session_file_max_mb: int = 50,
         session_cache_messages: int = 200,
+        session_cache_sessions: int = 200,
     ) -> None:
         self.provider = provider
         self.workspace = workspace
@@ -81,6 +82,7 @@ class ControlPlaneRuntime:
         self.sessions = SessionManager(
             workspace,
             cache_message_limit=session_cache_messages,
+            cache_session_limit=session_cache_sessions,
             file_max_mb=session_file_max_mb,
             retention_days=storage_retention_days,
         )
@@ -174,6 +176,7 @@ class ControlPlaneRuntime:
             audit_file_max_mb=config.storage.audit_file_max_mb,
             session_file_max_mb=config.storage.session_file_max_mb,
             session_cache_messages=config.storage.session_cache_messages,
+            session_cache_sessions=config.storage.session_cache_sessions,
         )
 
     def _register_default_agents(self) -> None:

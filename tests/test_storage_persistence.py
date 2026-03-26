@@ -63,6 +63,44 @@ def test_session_manager_removes_expired_files(tmp_path: Path) -> None:
     assert not stale_file.exists()
 
 
+def test_session_manager_evicts_cache_by_session_limit(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir(parents=True, exist_ok=True)
+    manager = SessionManager(
+        workspace,
+        cache_message_limit=4,
+        cache_session_limit=2,
+    )
+
+    manager.save_turn("cli:s1", "u1", "a1")
+    manager.save_turn("cli:s2", "u2", "a2")
+    manager.save_turn("cli:s3", "u3", "a3")
+
+    assert len(manager._cache) == 2
+    assert "cli:s1" not in manager._cache
+    assert {"cli:s2", "cli:s3"} == set(manager._cache.keys())
+
+
+def test_session_manager_get_history_page(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir(parents=True, exist_ok=True)
+    manager = SessionManager(workspace)
+    session_key = "cli:paged"
+
+    for idx in range(3):
+        manager.save_turn(session_key, f"user-{idx}", f"assistant-{idx}")
+
+    page1 = manager.get_history_page(session_key, page=1, page_size=2)
+    page2 = manager.get_history_page(session_key, page=2, page_size=2)
+    page3 = manager.get_history_page(session_key, page=3, page_size=2)
+    page4 = manager.get_history_page(session_key, page=4, page_size=2)
+
+    assert [m["content"] for m in page1] == ["user-2", "assistant-2"]
+    assert [m["content"] for m in page2] == ["user-1", "assistant-1"]
+    assert [m["content"] for m in page3] == ["user-0", "assistant-0"]
+    assert page4 == []
+
+
 def test_audit_log_rotates_when_file_too_large(tmp_path: Path) -> None:
     audit = AuditLog(tmp_path, file_max_mb=1)
     content = "x" * 450_000
