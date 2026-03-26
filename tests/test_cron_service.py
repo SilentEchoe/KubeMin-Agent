@@ -178,3 +178,49 @@ async def test_cron_service_run_loop(workspace):
     assert job_run.last_run is not None
     assert job_skip.last_run is None
     assert job_disabled.last_run is None
+
+
+@pytest.mark.asyncio
+async def test_cron_run_loop_uses_scheduled_due_time_for_next_run_precision(workspace):
+    service = CronService(workspace)
+    job = service.add_job("Precise", "Msg", ScheduleType.EVERY, "60")
+    job.next_run = "2024-01-01T12:00:00"
+
+    mock_callback = AsyncMock()
+
+    async def mock_sleep(_seconds):
+        service.stop()
+
+    with freeze_time("2024-01-01 12:00:10"):
+        with patch("kubemin_agent.cron.service.asyncio.sleep", side_effect=mock_sleep):
+            await service.run(mock_callback)
+
+    mock_callback.assert_called_once_with(job)
+    assert job.last_run == "2024-01-01T12:00:00"
+    assert job.next_run == "2024-01-01T12:01:00"
+
+
+@pytest.mark.asyncio
+async def test_cron_run_loop_run_once_misfire_resumes_from_now(workspace):
+    service = CronService(workspace)
+    job = service.add_job(
+        "RunOnceMisfire",
+        "Msg",
+        ScheduleType.EVERY,
+        "60",
+        misfire_policy="run_once",
+    )
+    job.next_run = "2024-01-01T10:00:00"
+
+    mock_callback = AsyncMock()
+
+    async def mock_sleep(_seconds):
+        service.stop()
+
+    with freeze_time("2024-01-01 12:00:00"):
+        with patch("kubemin_agent.cron.service.asyncio.sleep", side_effect=mock_sleep):
+            await service.run(mock_callback)
+
+    mock_callback.assert_called_once_with(job)
+    assert job.last_run == "2024-01-01T12:00:00"
+    assert job.next_run == "2024-01-01T12:01:00"

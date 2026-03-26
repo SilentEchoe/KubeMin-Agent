@@ -166,10 +166,11 @@ class CronService:
                 if not job.enabled:
                     continue
 
-                if self._should_run(job, now):
+                due_reference = self._resolve_due_reference(job, now)
+                if due_reference is not None:
                     try:
-                        job.last_run = now.isoformat()
-                        next_run = self._compute_next_run(job, now)
+                        job.last_run = due_reference.isoformat()
+                        next_run = self._compute_next_run(job, due_reference)
                         job.next_run = next_run.isoformat() if next_run else None
                         if job.schedule_type == ScheduleType.AT and next_run is None:
                             job.enabled = False
@@ -182,12 +183,16 @@ class CronService:
 
     def _should_run(self, job: CronJob, now: datetime) -> bool:
         """Check if a job should run at the given time."""
+        return self._resolve_due_reference(job, now) is not None
+
+    def _resolve_due_reference(self, job: CronJob, now: datetime) -> datetime | None:
+        """Resolve execution reference time for one due run under misfire policy."""
         if not job.next_run:
             next_run = self._bootstrap_next_run(job, now)
             job.next_run = next_run.isoformat() if next_run else None
             self._save_jobs()
         if not job.next_run:
-            return False
+            return None
 
         try:
             scheduled_at = datetime.fromisoformat(job.next_run)
@@ -195,18 +200,22 @@ class CronService:
             repaired = self._bootstrap_next_run(job, now)
             job.next_run = repaired.isoformat() if repaired else None
             self._save_jobs()
-            return False
+            return None
 
         if now < scheduled_at:
-            return False
+            return None
 
         overdue_seconds = (now - scheduled_at).total_seconds()
         if overdue_seconds > self.MISFIRE_GRACE_SECONDS and job.misfire_policy == "skip":
             repaired = self._advance_next_run_to_future(job, now, scheduled_at)
             job.next_run = repaired.isoformat() if repaired else None
             self._save_jobs()
-            return False
-        return True
+            return None
+
+        if overdue_seconds > self.MISFIRE_GRACE_SECONDS and job.misfire_policy == "run_once":
+            # Run once after downtime, then resume schedule from current wall clock.
+            return now
+        return scheduled_at
 
     def _bootstrap_next_run(self, job: CronJob, now: datetime) -> datetime | None:
         """Compute first next_run for new/legacy jobs."""
