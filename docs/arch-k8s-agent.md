@@ -26,6 +26,10 @@ K8sAgent (extends BaseAgent)
 用户消息 -> Scheduler (LLM 意图分析) -> K8sAgent -> 工具调用 -> 结果返回
 ```
 
+运行入口说明:
+- 默认入口: `ControlPlaneRuntime` 调度链路
+- 兼容入口: 仅当 `control.enabled=false` 时，CLI 使用 legacy `AgentLoop`
+
 ## 功能清单
 
 | 功能 | 状态 | 说明 |
@@ -67,6 +71,7 @@ K8sAgent (extends BaseAgent)
 
 | 日期 | 变更 | 原因 |
 |------|------|------|
+| 2026-03-26 | 文档状态对齐：补充“控制面默认 + AgentLoop 兼容开关”运行入口说明 | 与实际运行时行为保持一致，避免链路认知偏差 |
 | 2026-02-28 | 支持 `ContextEnvelope` 跨任务上下文继承与查询驱动记忆注入 | 提升多阶段诊断任务的信息复用能力 |
 | 2026-02-27 | 接入在线评估与 `reasoning_step` 结构化轨迹 | 提升诊断执行过程可观测性 |
 | 2026-02-26 | 实现 KubectlTool (只读白名单 + 命名空间隔离 + Secret 过滤) | MVP 工具集 |

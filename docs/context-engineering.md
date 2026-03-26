@@ -5,9 +5,9 @@
 本文档定义 KubeMin-Agent 的上下文工程基线、当前实现状态、关键缺口与分阶段演进计划，目标是将 Agent 执行从"黑盒调参"升级为"可观测、可评估、可回归"的工程体系。
 
 适用范围:
-- 控制面主链路: `ControlPlaneRuntime -> Scheduler -> SubAgent`
-- 兼容链路: `AgentLoop` (legacy, 非默认)
-- 上下文相关组件: `ContextBuilder`、`SessionManager`、`MemoryStore`、工具结果、审计与评估
+- 默认执行链路: `ControlPlaneRuntime -> Scheduler -> SubAgent`
+- 兼容入口: `AgentLoop`（仅当 `control.enabled=false` 时启用）
+- 上下文相关组件: `ContextBuilder`（legacy 入口）、`SessionManager`、`MemoryStore`、工具结果、审计与评估
 
 ---
 
@@ -41,7 +41,7 @@
 | 执行链路 | 状态 | 上下文构建方式 |
 |---|---|---|
 | 控制面主链路 (`control/runtime.py`) | 默认启用 | 子 Agent 使用\"任务锚点 + token 预算历史裁剪 + 当前任务\" |
-| 兼容链路 (`agent/loop.py`) | 保留 | `ContextBuilder` 已接入同一预算策略与任务锚点 |
+| 兼容链路 (`agent/loop.py`) | 兼容保留 | 仅在 `control.enabled=false` 时启用，`ContextBuilder` 复用同一预算策略 |
 
 结论:
 - 运行入口默认使用控制面主链路，legacy `AgentLoop` 仅保留兼容用途。
@@ -51,12 +51,12 @@
 | 信息类型 | 当前行为 | 代码位置 |
 |---|---|---|
 | System Prompt | 每个子 Agent 固定 prompt | `kubemin_agent/agents/*.py` |
-| 对话历史 | token 预算裁剪 + 最近消息兜底 | `kubemin_agent/agents/base.py`, `kubemin_agent/agent/context.py` |
-| 任务目标 | `TASK ANCHOR` + 每轮 `TASK REMINDER` | `kubemin_agent/agents/base.py`, `kubemin_agent/agent/context.py` |
+| 对话历史 | token 预算裁剪 + 最近消息兜底 | `kubemin_agent/agents/base.py`（默认）/`kubemin_agent/agent/context.py`（legacy） |
+| 任务目标 | `TASK ANCHOR` + 每轮 `TASK REMINDER` | `kubemin_agent/agents/base.py`（默认）/`kubemin_agent/agent/context.py`（legacy） |
 | 记忆 | 查询驱动召回（`query=task_message`） | `kubemin_agent/agents/base.py`, `kubemin_agent/agent/memory/store.py`, `kubemin_agent/agent/context.py` |
-| Skills | 按 `agents/triggers/always` 选择性注入（Control Plane + legacy） | `kubemin_agent/agent/skills.py`, `kubemin_agent/agents/base.py` |
-| Browser snapshot | 4000 字符截断 | `kubemin_agent/agent/tools/browser.py` |
-| Content audit text/console | 1000 字符预览截断 | `kubemin_agent/agent/tools/content_audit.py` |
+| Skills | 按 `agents/triggers/always` 选择性注入 | `kubemin_agent/agent/skills.py`, `kubemin_agent/agents/base.py` |
+| Browser snapshot | 语义摘要 + 必要摘录（大输出压缩） | `kubemin_agent/agent/tools/browser.py`, `kubemin_agent/agent/tools/summarizer.py` |
+| Content audit text/console | 语义摘要 + 预览压缩 | `kubemin_agent/agent/tools/content_audit.py`, `kubemin_agent/agent/tools/summarizer.py` |
 
 ### 4.3 观测与评估能力
 
@@ -92,8 +92,8 @@
 
 1. **预算策略可观测性不足**: 虽已采用 token 预算裁剪，但缺少统一预算报告与告警指标输出。
 2. **缺少预算编排器**: 无统一 token 预算分配逻辑，复杂任务稳定性风险高。
-3. **压缩策略偏静态**: 以字符截断为主，缺少语义保真摘要。
-4. **跨 Agent 上下文弱耦合**: 多任务编排时共享信息复用不足。
+3. **压缩策略可观测性不足**: 已引入语义摘要，但缺少统一压缩质量指标与阈值告警。
+4. **跨 Agent 上下文治理不足**: 已支持 `ContextEnvelope`，但缺少跨任务共享质量度量与回归基线。
 
 ---
 
@@ -153,7 +153,7 @@ flowchart LR
 
 实施结果:
 - `kubemin_agent/agents/base.py`: 已接入预算器，不再硬编码窗口
-- `kubemin_agent/agent/context.py` 与 `kubemin_agent/agent/loop.py`: 已接入同一预算策略
+- `kubemin_agent/agent/context.py` 与 `kubemin_agent/agent/loop.py`: 兼容入口已接入同一预算策略
 - `kubemin_agent/control/runtime.py` 与 CLI fallback: 已将预算参数从配置注入执行链路
 
 验收:
@@ -164,7 +164,7 @@ flowchart LR
 - `BaseAgent.run()` 已由固定 `history[-10:]` 改为 token 预算裁剪
 - 新增任务锚点 (`TASK ANCHOR`) 与每轮提醒 (`TASK REMINDER`) 以降低长任务目标漂移
 - 上述预算参数已配置化并由 `ControlPlaneRuntime.from_config()` 注入默认子 Agent
-- legacy `AgentLoop` 也已接入同一预算策略，避免双轨行为不一致
+- legacy `AgentLoop`（仅兼容入口）也已接入同一预算策略，避免双轨行为不一致
 
 ### M3 (P1, 已完成核心实现): 工具结果语义摘要层
 
@@ -236,7 +236,7 @@ flowchart LR
 
 ### 8.3 稳定性指标
 
-- `agent_iteration_exhaust_rate` (达到 MAX_ITERATIONS 的比例)
+- `agent_iteration_exhaust_rate` (达到 `max_tool_iterations` 的比例)
 - `tool_error_rate`
 - `fallback_to_general_rate`
 
@@ -267,7 +267,7 @@ flowchart LR
 
 | 日期 | 变更 | 原因 |
 |---|---|---|
-| 2026-03-25 | 文档与实现对齐：移除 legacy 链路描述，统一为控制面主链路事实 | 遵循 Docs-First，确保文档即真相 |
+| 2026-03-26 | 文档与实现对齐：统一“控制面默认 + AgentLoop 兼容开关”语义，修正上下文来源与压缩策略描述 | 遵循 Docs-First，消除链路状态自相矛盾 |
 | 2026-02-28 | M3-M5 核心能力落地：语义摘要层、跨 Agent `ContextEnvelope`、查询驱动记忆注入 | 提升复杂任务信息复用与上下文效率，减少硬截断信息损失 |
 | 2026-02-27 | M2 核心能力落地: 控制面子 Agent 接入动态上下文预算与任务锚点 | 解决长任务目标漂移与固定 10 轮窗口问题 |
 | 2026-02-27 | 重构文档为专业版上下文工程设计与路线图，纳入在线评估与可观测能力 | 对齐当前实现，提供可执行演进计划 |

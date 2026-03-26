@@ -27,6 +27,10 @@ GeneralAgent (extends BaseAgent)
 用户消息 -> Scheduler -> (无专职 Agent 匹配) -> GeneralAgent -> 工具调用 -> 结果返回
 ```
 
+运行入口说明:
+- 默认入口: `ControlPlaneRuntime` 调度链路
+- 兼容入口: 仅当 `control.enabled=false` 时，CLI 使用 legacy `AgentLoop`
+
 ## 功能清单
 
 | 功能 | 状态 | 说明 |
@@ -74,6 +78,7 @@ GeneralAgent (extends BaseAgent)
 
 | 日期 | 变更 | 原因 |
 |------|------|------|
+| 2026-03-26 | 文档状态对齐：补充“控制面默认 + AgentLoop 兼容开关”运行入口说明 | 与实际运行时行为保持一致，避免链路认知偏差 |
 | 2026-03-18 | `ShellTool` 增加可配置沙箱隔离执行 (`off/best_effort/strict`) 与 `strict` fail-closed 策略 | 提升命令执行安全边界, 降低越权风险 |
 | 2026-02-28 | 支持 `ContextEnvelope` 跨任务上下文继承与查询驱动记忆注入 | 减少重复探索，提升复杂任务上下文利用率 |
 | 2026-02-27 | 接入在线评估与 `reasoning_step` 结构化轨迹 | 解决执行黑盒问题, 提升可观测性 |
