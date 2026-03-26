@@ -1,6 +1,6 @@
 """Tests for Kubectl tool."""
 
-from unittest.mock import ANY, AsyncMock, patch
+from unittest.mock import ANY, AsyncMock, Mock, patch
 
 import pytest
 
@@ -99,8 +99,14 @@ async def test_execute_timeout(mock_create_proc, mock_wait, tool):
     import asyncio
 
     mock_proc = AsyncMock()
+    mock_proc.kill = Mock()
     mock_create_proc.return_value = mock_proc
-    mock_wait.side_effect = asyncio.TimeoutError()
+    async def _raise_timeout(awaitable, timeout):  # noqa: ANN001
+        if hasattr(awaitable, "close"):
+            awaitable.close()
+        raise asyncio.TimeoutError()
+
+    mock_wait.side_effect = _raise_timeout
 
     result = await tool.execute(command="get pods")
     assert "timed out" in result

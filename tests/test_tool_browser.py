@@ -64,6 +64,7 @@ async def test_browser_domain_whitelist() -> None:
 @pytest.mark.asyncio
 async def test_browser_evaluate_restrictions() -> None:
     mcp = AsyncMock()
+    mcp.call_tool.return_value = "page title"
     tool = BrowserTool(mcp)
 
     # Allowed evaluations

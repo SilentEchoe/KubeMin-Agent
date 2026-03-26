@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Literal
 
 from pydantic import BaseModel, Field
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class AgentDefaults(BaseModel):
@@ -222,6 +222,11 @@ class PatrolConfig(BaseModel):
 class Config(BaseSettings):
     """Root configuration for kubemin-agent."""
 
+    model_config = SettingsConfigDict(
+        env_prefix="KUBEMIN_AGENT_",
+        env_nested_delimiter="__",
+    )
+
     agents: AgentsConfig = Field(default_factory=AgentsConfig)
     channels: ChannelsConfig = Field(default_factory=ChannelsConfig)
     providers: ProvidersConfig = Field(default_factory=ProvidersConfig)
@@ -261,7 +266,3 @@ class Config(BaseSettings):
         if self.providers.openai.api_base:
             return self.providers.openai.api_base
         return None
-
-    class Config:
-        env_prefix = "KUBEMIN_AGENT_"
-        env_nested_delimiter = "__"

@@ -70,9 +70,9 @@ async def test_agent_loop_tool_calls(agent_loop):
     agent_loop.provider.chat.side_effect = [resp1, resp2]
 
     # Mock tool registry
-    agent_loop.tools = AsyncMock()
+    agent_loop.tools = MagicMock()
     agent_loop.tools.__len__.return_value = 1
-    agent_loop.tools.execute.return_value = "Tool result"
+    agent_loop.tools.execute = AsyncMock(return_value="Tool result")
 
     result = await agent_loop.process_direct("hello")
 
@@ -90,9 +90,9 @@ async def test_agent_loop_max_iterations(agent_loop):
     agent_loop.provider.chat.return_value = resp
 
     # Mock tool registry
-    agent_loop.tools = AsyncMock()
+    agent_loop.tools = MagicMock()
     agent_loop.tools.__len__.return_value = 1
-    agent_loop.tools.execute.return_value = "Tool result"
+    agent_loop.tools.execute = AsyncMock(return_value="Tool result")
 
     result = await agent_loop.process_direct("hello")
 
@@ -132,22 +132,22 @@ async def test_agent_loop_run_bus_listener(agent_loop):
 @pytest.mark.asyncio
 async def test_agent_loop_circuit_breaker(agent_loop):
     """Test that the agent loop breaks early after consecutive tool errors."""
-    
+
     # Always return a tool call
     tc_req = ToolCallRequest(id="call_error", name="fail_tool", arguments={})
     resp = LLMResponse(content=None, finish_reason="tool_calls", tool_calls=[tc_req])
     agent_loop.provider.chat.return_value = resp
 
     # Mock tool registry to ALWAYS RAISE an exception
-    agent_loop.tools = AsyncMock()
+    agent_loop.tools = MagicMock()
     agent_loop.tools.__len__.return_value = 1
-    agent_loop.tools.execute.side_effect = Exception("Simulated tool crash")
+    agent_loop.tools.execute = AsyncMock(side_effect=Exception("Simulated tool crash"))
 
     result = await agent_loop.process_direct("break me")
 
     # The breaker is hardcoded to 3 in AgentLoop
     assert "too many consecutive tool execution errors" in result
-    
+
     # Provider chat should have been called 3 times exactly
     assert agent_loop.provider.chat.call_count == 3
     assert agent_loop.tools.execute.call_count == 3

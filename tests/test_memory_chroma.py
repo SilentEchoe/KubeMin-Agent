@@ -7,6 +7,11 @@ import pytest
 from kubemin_agent.agent.memory.chroma_backend import ChromaDBBackend
 from kubemin_agent.agent.memory.entry import MemoryEntry
 
+pytestmark = pytest.mark.skipif(
+    os.environ.get("KUBEMIN_ENABLE_CHROMA_TESTS") != "1",
+    reason="Chroma ONNX backend is optional and disabled by default in test runs.",
+)
+
 
 @pytest.fixture(autouse=True)
 def isolated_chroma_env(tmp_path):

@@ -108,7 +108,9 @@ async def test_list_tools(mcp_client):
 async def test_send_request_timeout(mcp_client):
     """Test that a request times out correctly."""
     mcp_client._process = MagicMock()
-    mcp_client._process.stdin = AsyncMock()
+    mcp_client._process.stdin = MagicMock()
+    mcp_client._process.stdin.write = MagicMock()
+    mcp_client._process.stdin.drain = AsyncMock()
 
     # We mock asyncio.wait_for to simply raise TimeoutError
     with patch("kubemin_agent.agent.tools.mcp_client.asyncio.wait_for", side_effect=asyncio.TimeoutError):
@@ -123,7 +125,10 @@ async def test_stop_cleanup(mcp_client):
     """Test that stop correctly cleans up the process and tasks."""
     mcp_client._initialized = True
 
-    mock_process = AsyncMock()
+    mock_process = MagicMock()
+    mock_process.terminate = MagicMock()
+    mock_process.wait = AsyncMock(return_value=0)
+    mock_process.kill = MagicMock()
     mcp_client._process = mock_process
 
     # Use a real task so it can be awaited properly
@@ -212,7 +217,9 @@ async def test_send_notification_requires_process():
 async def test_send_notification_writes_to_stdin():
     client = MCPClient()
     client._process = MagicMock()
-    client._process.stdin = AsyncMock()
+    client._process.stdin = MagicMock()
+    client._process.stdin.write = MagicMock()
+    client._process.stdin.drain = AsyncMock()
     await client._send_notification("notifications/initialized", {"ok": True})
     client._process.stdin.write.assert_called_once()
     client._process.stdin.drain.assert_awaited_once()

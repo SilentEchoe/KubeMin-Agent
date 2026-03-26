@@ -8,6 +8,8 @@ from pydantic import BaseModel, Field
 
 class TestCaseStatus(str, Enum):
     """Execution status of a single test case."""
+    __test__ = False
+
     PENDING = "PENDING"
     RUNNING = "RUNNING"
     PASSED = "PASSED"
@@ -18,6 +20,8 @@ class TestCaseStatus(str, Enum):
 
 class TestCase(BaseModel):
     """A specific test case derived from the PDF guide and game rules."""
+    __test__ = False
+
     id: str = Field(..., description="Unique identifier for the test case (e.g., 'TC-001').")
     description: str = Field(..., description="What this test case is verifying.")
     expected_result: str = Field(..., description="The expected outcome according to the guide.")
@@ -46,6 +50,8 @@ class FSMEdge(BaseModel):
 
 class TestPlan(BaseModel):
     """The overall test plan generated after initial exploration, representing the FSM graph."""
+    __test__ = False
+
     plan_id: str = Field(..., description="Unique identifier for this test plan.")
     game_url: str = Field(..., description="The URL of the game being tested.")
     status: str = Field(default="IN_PROGRESS", description="Status of the overall plan (e.g., IN_PROGRESS, COMPLETED, ABORTED).")
