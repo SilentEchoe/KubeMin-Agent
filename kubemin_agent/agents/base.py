@@ -25,7 +25,6 @@ class BaseAgent(ABC):
     Each has its own system prompt, tool set, and domain expertise.
     """
 
-    MAX_ITERATIONS = 20
     DEFAULT_MAX_TOOL_ITERATIONS = 20
     DEFAULT_MAX_CONTEXT_TOKENS = 6000
     DEFAULT_MIN_RECENT_HISTORY_MESSAGES = 4

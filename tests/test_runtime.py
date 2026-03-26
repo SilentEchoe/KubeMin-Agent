@@ -75,6 +75,19 @@ def test_runtime_from_config_applies_context_budget_to_agents(tmp_path: Path) ->
     assert general._max_tool_iterations == 7
 
 
+def test_runtime_from_config_clamps_invalid_max_tool_iterations(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir(parents=True, exist_ok=True)
+    config = Config()
+    config.agents.defaults.max_tool_iterations = 0
+
+    runtime = ControlPlaneRuntime.from_config(config, RoutingProvider(), workspace)
+    general = runtime.registry.get("general")
+    assert general is not None
+    assert general._max_tool_iterations == 1
+    assert runtime.max_tool_iterations == 1
+
+
 def test_runtime_from_config_applies_exec_sandbox_config(tmp_path: Path) -> None:
     workspace = tmp_path / "workspace"
     workspace.mkdir(parents=True, exist_ok=True)

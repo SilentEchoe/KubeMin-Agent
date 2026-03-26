@@ -226,3 +226,24 @@ async def test_base_agent_uses_configured_max_tool_iterations(tmp_path: Path) ->
     result = await agent.run("持续执行工具调用直到达到迭代上限", session_key=session_key)
     assert result == "Reached maximum tool iterations. Please try a simpler request."
     assert provider.calls == 2
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("configured_value", [0, -3])
+async def test_base_agent_clamps_invalid_max_tool_iterations(tmp_path: Path, configured_value: int) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir(parents=True, exist_ok=True)
+    session_key = f"cli:test_invalid_max_tool_iterations:{configured_value}"
+    sessions = SessionManager(workspace)
+    provider = LoopingToolProvider()
+    agent = DummyAgent(
+        provider=provider,
+        sessions=sessions,
+        workspace=workspace,
+        max_tool_iterations=configured_value,
+    )
+
+    result = await agent.run("触发工具循环并验证边界钳制", session_key=session_key)
+    assert result == "Reached maximum tool iterations. Please try a simpler request."
+    assert provider.calls == 1
+    assert agent._max_tool_iterations == 1
