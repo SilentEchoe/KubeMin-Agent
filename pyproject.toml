@@ -67,3 +67,7 @@ ignore = ["E501"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+filterwarnings = [
+    "error::RuntimeWarning",
+    "error::pydantic.warnings.PydanticDeprecatedSince20",
+]
