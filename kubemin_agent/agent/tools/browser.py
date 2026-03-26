@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-import re
 import asyncio
+import re
 from typing import Any
 from urllib.parse import urlparse
 
@@ -111,7 +111,7 @@ class BrowserTool(Tool):
                 url = kwargs.get("url", "")
                 if not url:
                     return "Error: 'url' is required for navigate action"
-                
+
                 # Check domain whitelist if configured
                 if self._allowed_domain:
                     parsed = urlparse(url)
@@ -129,7 +129,7 @@ class BrowserTool(Tool):
                 uid = kwargs.get("uid", "")
                 if not uid:
                     return "Error: 'uid' is required. Use 'snapshot' first to get element uids."
-                
+
                 coords = await self._mcp.get_element_coordinates(uid)
                 if coords:
                     await self._mcp.animate_cursor(coords[0], coords[1], is_click=True)
@@ -143,7 +143,7 @@ class BrowserTool(Tool):
                 value = kwargs.get("value", "")
                 if not uid:
                     return "Error: 'uid' is required. Use 'snapshot' first to get element uids."
-                
+
                 coords = await self._mcp.get_element_coordinates(uid)
                 if coords:
                     await self._mcp.animate_cursor(coords[0], coords[1], is_click=True)
@@ -156,7 +156,7 @@ class BrowserTool(Tool):
                 uid = kwargs.get("uid", "")
                 if not uid:
                     return "Error: 'uid' is required."
-                
+
                 coords = await self._mcp.get_element_coordinates(uid)
                 if coords:
                     await self._mcp.animate_cursor(coords[0], coords[1])
@@ -170,7 +170,7 @@ class BrowserTool(Tool):
                 to_uid = kwargs.get("to_uid", "")
                 if not from_uid or not to_uid:
                     return "Error: 'uid' and 'to_uid' are required for drag."
-                
+
                 # Animate to source then to target
                 from_coords = await self._mcp.get_element_coordinates(from_uid)
                 to_coords = await self._mcp.get_element_coordinates(to_uid)
@@ -201,7 +201,7 @@ class BrowserTool(Tool):
                 value = kwargs.get("value", "")
                 if not value:
                     return "Error: 'value' (JavaScript code) is required."
-                
+
                 # Strict Regex blocks for malicious network exfiltration strings
                 forbidden_patterns = [r"\bfetch\s*\(", r"\bXMLHttpRequest\b", r"\bWebSocket\b", r"\bsetTimeout\b", r"\bsetInterval\b"]
                 for pattern in forbidden_patterns:
@@ -298,7 +298,7 @@ class BrowserTool(Tool):
 
             else:
                 return f"Error: Unknown action '{action}'"
-            
+
             # Wrap successful outputs as untrusted content to prevent prompt injection
             return f"<untrusted_game_content>\n{result}\n</untrusted_game_content>"
 

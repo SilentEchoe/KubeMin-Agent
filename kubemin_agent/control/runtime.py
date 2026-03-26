@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import uuid
 from pathlib import Path
+from typing import Any
 
 from loguru import logger
 
@@ -177,7 +178,7 @@ class ControlPlaneRuntime:
 
     def _register_default_agents(self) -> None:
         """Register built-in sub-agents."""
-        agent_kwargs = {
+        agent_kwargs: dict[str, Any] = {
             "audit": self.audit,
             "workspace": self.workspace,
             "max_context_tokens": self.max_context_tokens,

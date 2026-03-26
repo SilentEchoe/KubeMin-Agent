@@ -226,7 +226,7 @@ class CronService:
             return reference + timedelta(seconds=interval_seconds)
 
         if job.schedule_type == ScheduleType.CRON:
-            from croniter import croniter
+            from croniter import croniter  # type: ignore[import-untyped]
 
             cron = croniter(job.schedule_value, reference)
             return cron.get_next(datetime)

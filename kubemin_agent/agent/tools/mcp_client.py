@@ -129,18 +129,18 @@ class MCPClient:
         """Inject visual cursor CSS and JS into the current page."""
         if self._step_delay <= 0:
             return  # Only inject in observable mode
-            
+
         try:
             css_path = UI_ASSETS_DIR / "cursor.css"
             js_path = UI_ASSETS_DIR / "cursor.js"
-            
+
             if not css_path.exists() or not js_path.exists():
                 logger.warning(f"UI assets not found in {UI_ASSETS_DIR}")
                 return
-                
+
             css_content = css_path.read_text().replace("`", "\\`")
             js_content = js_path.read_text().replace("`", "\\`")
-            
+
             # Inject CSS
             inject_css_js = f"""
             (function() {{
@@ -153,7 +153,7 @@ class MCPClient:
             }})();
             {js_content}
             """
-            
+
             await self.call_tool("evaluate_script", {"function": inject_css_js})
             logger.debug("Visual cursor UI assets injected")
         except Exception as e:
@@ -163,7 +163,7 @@ class MCPClient:
         """Get the center (x, y) coordinates of an element by its uid."""
         if not uid:
             return None
-            
+
         js = f"""
         (function() {{
             const el = document.querySelector('[kubemin-agent-uid="{uid}"]') || document.querySelector('[data-mcp-uid="{uid}"]:not([data-mcp-uid=""])') || document.querySelector('[mcp-uid="{uid}"]:not([mcp-uid=""])') || document.querySelector(`[uid="{uid}"]`);
@@ -180,14 +180,14 @@ class MCPClient:
                 "name": "evaluate_script",
                 "arguments": {"function": js}
             })
-            
+
             if result and "content" in result:
                 import json
                 text = ""
                 for part in result["content"]:
                     if part.get("type") == "text":
                         text += part.get("text", "")
-                
+
                 try:
                     data = json.loads(text)
                     if data and isinstance(data, dict) and "x" in data and "y" in data:
@@ -203,13 +203,13 @@ class MCPClient:
         """Trigger the visual cursor animation via custom events."""
         if self._step_delay <= 0:
             return  # Only animate in observable mode
-            
+
         js = f"""
         (function() {{
-            window.dispatchEvent(new CustomEvent('GameAuditAgent::MoveCursor', {{ 
-                detail: {{ x: {x}, y: {y} }} 
+            window.dispatchEvent(new CustomEvent('GameAuditAgent::MoveCursor', {{
+                detail: {{ x: {x}, y: {y} }}
             }}));
-            {f"window.dispatchEvent(new CustomEvent('GameAuditAgent::Click', {{}}));" if is_click else ""}
+            {"window.dispatchEvent(new CustomEvent('GameAuditAgent::Click', {}));" if is_click else ""}
         }})();
         """
         try:

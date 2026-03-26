@@ -1,7 +1,6 @@
-import asyncio
 import os
-import sys
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from loguru import logger
 from prompt_toolkit import PromptSession
@@ -11,22 +10,25 @@ from prompt_toolkit.formatted_text import HTML
 from prompt_toolkit.history import FileHistory
 from prompt_toolkit.lexers import PygmentsLexer
 from prompt_toolkit.styles import Style
-from pygments.lexers.shell import BashLexer
+from pygments.lexers.shell import BashLexer  # type: ignore[import-untyped]
 from rich.console import Console
 from rich.markdown import Markdown
 
 from kubemin_agent.agent.skills import SkillsLoader
 
+if TYPE_CHECKING:
+    from kubemin_agent.control.runtime import ControlPlaneRuntime
+
 
 def get_prompt_style() -> Style:
     """Codex/Claude Code like theme."""
-    # From the Codex screenshot: 
+    # From the Codex screenshot:
     # The selected command uses a bright cyan background (#00d7ff or similar) and black text.
     # The non-selected command uses bold white/cyan text and no background.
     # The description text is dim/gray.
     return Style.from_dict({
         "prompt": "fg:ansicyan bold",
-        "text": "fg:ansiwhite", 
+        "text": "fg:ansiwhite",
         "completion-menu": "bg:default",
         "completion-menu.completion": "fg:ansiwhite bg:default",
         "completion-menu.meta.completion": "fg:ansigray bg:default",
@@ -72,7 +74,7 @@ async def run_interactive_ui(runtime: "ControlPlaneRuntime", workspace: Path, co
         "/model": "切换模型",
     })
 
-    session = PromptSession(
+    session: PromptSession[str] = PromptSession(
         history=FileHistory(str(history_file)),
         auto_suggest=AutoSuggestFromHistory(),
         completer=command_completer,
@@ -98,7 +100,7 @@ async def run_interactive_ui(runtime: "ControlPlaneRuntime", workspace: Path, co
             user_input = await session.prompt_async(
                 HTML("<prompt>❯ </prompt>")
             )
-            
+
             text = user_input.strip()
             if not text:
                 continue
@@ -106,12 +108,12 @@ async def run_interactive_ui(runtime: "ControlPlaneRuntime", workspace: Path, co
             lower_text = text.lower()
             if lower_text in ("/exit", "/quit", "exit", "quit"):
                 break
-            
+
             if lower_text == "/clear":
                 # Clear terminal
                 os.system('cls' if os.name == 'nt' else 'clear')
                 continue
-            
+
             if lower_text == "/help":
                 console.print("\n[bold]可用命令:[/bold]")
                 console.print("  [cyan]/help[/cyan]    显示本帮助信息")
@@ -122,7 +124,7 @@ async def run_interactive_ui(runtime: "ControlPlaneRuntime", workspace: Path, co
                 console.print("  [cyan]/model[/cyan]   切换模型")
                 console.print("  [cyan]/exit[/cyan]    退出代理\n")
                 continue
-            
+
             if lower_text == "/skills":
                 loader = SkillsLoader(workspace)
                 summary = loader.build_skills_summary()
@@ -137,7 +139,7 @@ async def run_interactive_ui(runtime: "ControlPlaneRuntime", workspace: Path, co
                          console.print(Markdown(summary))
                     console.print()
                 continue
-                
+
             if lower_text == "/model":
                 console.print("[yellow]切换模型功能尚在开发中...[/yellow]\n")
                 continue

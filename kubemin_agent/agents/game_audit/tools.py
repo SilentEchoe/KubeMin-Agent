@@ -89,13 +89,22 @@ class GeneratePlanTool(Tool):
         }
 
     async def execute(self, **kwargs: Any) -> str:
+        plan_id = kwargs.get("plan_id")
+        game_url = kwargs.get("game_url")
+        if not isinstance(plan_id, str) or not plan_id.strip():
+            return "Error: plan_id must be a non-empty string."
+        if not isinstance(game_url, str) or not game_url.strip():
+            return "Error: game_url must be a non-empty string."
+
         cases = []
         for c in kwargs.get("test_cases", []):
             cases.append(TestCase(
                 id=c["id"],
                 description=c["description"],
                 expected_result=c["expected_result"],
-                status=TestCaseStatus.PENDING
+                status=TestCaseStatus.PENDING,
+                actual_result=None,
+                error_message=None,
             ))
 
         nodes = []
@@ -106,7 +115,9 @@ class GeneratePlanTool(Tool):
                     id=ac["id"],
                     description=ac["description"],
                     expected_result=ac["expected_result"],
-                    status=TestCaseStatus.PENDING
+                    status=TestCaseStatus.PENDING,
+                    actual_result=None,
+                    error_message=None,
                 ))
             nodes.append(FSMNode(
                 id=n["id"],
@@ -124,8 +135,8 @@ class GeneratePlanTool(Tool):
             ))
 
         plan = TestPlan(
-            plan_id=kwargs.get("plan_id"),
-            game_url=kwargs.get("game_url"),
+            plan_id=plan_id,
+            game_url=game_url,
             test_cases=cases,
             nodes=nodes,
             edges=edges

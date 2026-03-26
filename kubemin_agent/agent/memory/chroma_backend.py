@@ -95,12 +95,23 @@ class ChromaDBBackend(MemoryBackend):
         )
 
         # Chroma returns lists of lists because it supports batch queries
-        if not results or not results["ids"] or not results["ids"][0]:
+        ids_batches = results.get("ids")
+        if not ids_batches or not ids_batches[0]:
             return []
 
-        ids = results["ids"][0]
-        documents = results["documents"][0] if results.get("documents") else []
-        metadatas = results["metadatas"][0] if results.get("metadatas") else []
+        ids = ids_batches[0]
+        documents_batches = results.get("documents")
+        documents = (
+            documents_batches[0]
+            if documents_batches and len(documents_batches) > 0 and documents_batches[0] is not None
+            else []
+        )
+        metadatas_batches = results.get("metadatas")
+        metadatas = (
+            metadatas_batches[0]
+            if metadatas_batches and len(metadatas_batches) > 0 and metadatas_batches[0] is not None
+            else []
+        )
 
         entries: list[MemoryEntry] = []
         for i in range(len(ids)):

@@ -80,17 +80,17 @@ def _save_report(report, workspace: Path) -> Path:
     ]
 
     lines: list[str] = [
-        f"# GameAuditAgent Report",
-        f"",
-        f"| Item | Value |",
-        f"|---------|-------|",
+        "# GameAuditAgent Report",
+        "",
+        "| Item | Value |",
+        "|---------|-------|",
         f"| Game URL | {report.game_url} |",
         f"| Verdict | **{verdict_emoji}** |",
         f"| Total Issues | {report.total_vulnerabilities} |",
         f"| Critical | {report.critical_issues} |",
         f"| High | {report.high_issues} |",
         f"| Report Time | {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')} |",
-        f"",
+        "",
     ]
 
     if status != "PASS" and failed_cases:
@@ -100,7 +100,7 @@ def _save_report(report, workspace: Path) -> Path:
         ]
         for tc in failed_cases:
             lines.append(f"### [{tc.id}] {tc.description}")
-            lines.append(f"")
+            lines.append("")
             lines.append(f"- **Expected:** {tc.expected_result}")
             if tc.actual_result:
                 lines.append(f"- **Actual:** {tc.actual_result}")
@@ -283,7 +283,8 @@ def serve(
     ):
         """Run a game test with uploaded PDF and game URL."""
         # Save uploaded PDF
-        pdf_path = workspace / "uploads" / pdf_file.filename
+        filename = pdf_file.filename or "uploaded-guide.pdf"
+        pdf_path = workspace / "uploads" / filename
         pdf_path.parent.mkdir(parents=True, exist_ok=True)
         content = await pdf_file.read()
         pdf_path.write_bytes(content)
@@ -304,7 +305,7 @@ def serve(
             result = await agent.run(task_message, session_key=f"service:game_audit:{game_url}")
             if result.startswith("[SUSPENDED]"):
                 return JSONResponse({"status": "suspended", "message": result}, status_code=202)
-                
+
             if getattr(agent, "_final_report", None):
                 return JSONResponse(agent._final_report.model_dump(mode="json"))
             return JSONResponse({"status": "ok", "report": result})

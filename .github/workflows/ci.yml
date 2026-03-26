@@ -26,5 +26,8 @@ jobs:
       - name: Ruff
         run: ruff check .
 
+      - name: Mypy
+        run: mypy kubemin_agent
+
       - name: Pytest (global coverage gate)
         run: pytest --cov=kubemin_agent --cov-fail-under=80

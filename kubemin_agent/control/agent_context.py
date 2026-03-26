@@ -35,7 +35,7 @@ class ContextEnvelope:
         ]
 
         if self.active_plan_content:
-            lines.append(f"\n[ACTIVE EXECUTION PLAN]")
+            lines.append("\n[ACTIVE EXECUTION PLAN]")
             lines.append(self.active_plan_content)
             lines.append("(This is the current state of the overall plan. Use this to understand your context and progress)")
 

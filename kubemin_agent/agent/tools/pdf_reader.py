@@ -77,7 +77,7 @@ class PDFReaderTool(Tool):
             text_parts.append(f"[PDF: {path.name} | Pages: {total_pages}]")
 
             for page_idx in range(start_page, end_page):
-                page = doc[page_idx]
+                page: Any = doc[page_idx]
                 page_text = page.get_text()
                 if page_text.strip():
                     text_parts.append(f"\n--- Page {page_idx + 1} ---\n{page_text.strip()}")

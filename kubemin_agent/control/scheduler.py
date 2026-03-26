@@ -166,6 +166,9 @@ class Scheduler:
         or delegate agents to use.
         """
         dispatch_id = request_id or uuid.uuid4().hex[:12]
+        orchestrator = self._orchestrator
+        if orchestrator is None:
+            return "Error: Orchestrator is not configured."
 
         self.audit.log_dispatch(
             session_key=session_key,
@@ -177,10 +180,10 @@ class Scheduler:
         )
 
         start_time = time.monotonic()
-        self._prepare_agent_trace(agent=self._orchestrator, task_id="orchestrated")
+        self._prepare_agent_trace(agent=orchestrator, task_id="orchestrated")
 
         try:
-            result = await self._orchestrator.run(
+            result = await orchestrator.run(
                 message,
                 session_key,
                 request_id=dispatch_id,
@@ -209,7 +212,7 @@ class Scheduler:
             )
             logger.error(f"Orchestrator execution failed: {e}")
 
-        trace_events = self._consume_agent_trace(self._orchestrator)
+        trace_events = self._consume_agent_trace(orchestrator)
 
         validation = await self.validator.validate(
             agent_name="orchestrator",

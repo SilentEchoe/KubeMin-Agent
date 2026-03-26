@@ -69,7 +69,15 @@ class KubectlTool(Tool):
             "required": ["command"],
         }
 
-    async def execute(self, *, command: str, namespace: str = "") -> str:
+    async def execute(self, **kwargs: Any) -> str:
+        command = kwargs.get("command")
+        if not isinstance(command, str):
+            return "Error: command must be a string"
+        namespace_raw = kwargs.get("namespace", "")
+        if not isinstance(namespace_raw, str):
+            return "Error: namespace must be a string"
+        namespace = namespace_raw
+
         # Safety validation
         safety_error = self._check_safety(command)
         if safety_error:

@@ -37,6 +37,7 @@ class MemoryStore:
         memory_dir = workspace / "memory"
         memory_dir.mkdir(parents=True, exist_ok=True)
 
+        backend: MemoryBackend
         if backend_type == "chroma":
             from kubemin_agent.agent.memory.chroma_backend import ChromaDBBackend
             backend = ChromaDBBackend(memory_dir)

@@ -133,12 +133,17 @@ class SandboxK8sConfig(BaseModel):
     require_runtime_class: bool = True
 
 
+def _default_sandbox_backends() -> list[Literal["container", "bwrap"]]:
+    """Default sandbox backends in priority order."""
+    return ["container", "bwrap"]
+
+
 class SandboxConfig(BaseModel):
     """Global process-level sandbox configuration."""
 
     mode: Literal["off", "best_effort", "strict"] = "strict"
     backends: list[Literal["container", "bwrap"]] = Field(
-        default_factory=lambda: ["container", "bwrap"]
+        default_factory=_default_sandbox_backends
     )
     container: SandboxContainerConfig = Field(default_factory=SandboxContainerConfig)
     network: SandboxNetworkConfig = Field(default_factory=SandboxNetworkConfig)

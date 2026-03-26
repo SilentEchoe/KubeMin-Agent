@@ -1,8 +1,5 @@
-import asyncio
-import json
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
-import httpx
 import pytest
 
 from kubemin_agent.bus.events import InboundMessage
@@ -49,7 +46,7 @@ async def test_telegram_disabled_on_empty_token(bus):
 @pytest.mark.asyncio
 async def test_telegram_process_update_valid(channel):
     channel._running = True
-    
+
     update = {
         "message": {
             "text": "Hello world",
@@ -64,7 +61,7 @@ async def test_telegram_process_update_valid(channel):
     # Verify message entered the bus
     assert not channel.bus.inbound.empty()
     msg: InboundMessage = await channel.bus.inbound.get()
-    
+
     assert msg.channel == "telegram"
     assert msg.chat_id == "67890"
     assert msg.content == "Hello world"
@@ -73,7 +70,7 @@ async def test_telegram_process_update_valid(channel):
 @pytest.mark.asyncio
 async def test_telegram_process_update_valid_by_username(channel):
     channel._running = True
-    
+
     update = {
         "message": {
             "text": "Admin ping",
@@ -89,7 +86,7 @@ async def test_telegram_process_update_valid_by_username(channel):
 @pytest.mark.asyncio
 async def test_telegram_process_update_unauthorized(channel):
     channel._running = True
-    
+
     update = {
         "message": {
             "text": "I am a hacker",
@@ -99,7 +96,7 @@ async def test_telegram_process_update_unauthorized(channel):
     }
 
     await channel._process_update(update)
-    
+
     # Bus must be empty
     assert channel.bus.inbound.empty()
 
@@ -108,13 +105,13 @@ async def test_telegram_process_update_unauthorized(channel):
 async def test_telegram_send_message(channel):
     channel._running = True
     channel._client = AsyncMock()
-    
+
     mock_response = MagicMock()
     mock_response.raise_for_status.return_value = None
     channel._client.post.return_value = mock_response
-    
+
     await channel.send_message("67890", "Reply text")
-    
+
     channel._client.post.assert_called_once()
     args, kwargs = channel._client.post.call_args
     assert args[0] == "https://api.telegram.org/bottest_token/sendMessage"

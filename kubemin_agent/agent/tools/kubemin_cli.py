@@ -82,7 +82,14 @@ class KubeMinCliTool(Tool):
             "required": ["command"],
         }
 
-    async def execute(self, *, command: str, timeout: int = DEFAULT_TIMEOUT) -> str:
+    async def execute(self, **kwargs: Any) -> str:
+        command = kwargs.get("command")
+        if not isinstance(command, str):
+            return "Error: command must be a string"
+        timeout_raw = kwargs.get("timeout", DEFAULT_TIMEOUT)
+        if not isinstance(timeout_raw, int):
+            return "Error: timeout must be an integer"
+        timeout = timeout_raw
         timeout = min(max(timeout, 1), 120)
 
         # Safety checks
@@ -151,8 +158,8 @@ class KubeMinCliTool(Tool):
             parts = parts[1:]
         elif base not in _ALLOWED_SUBCOMMANDS:
             return (
-                f"Error: command must start with 'kubemin-cli'. "
-                f"Example: 'kubemin-cli get apps'"
+                "Error: command must start with 'kubemin-cli'. "
+                "Example: 'kubemin-cli get apps'"
             )
 
         if not parts:
