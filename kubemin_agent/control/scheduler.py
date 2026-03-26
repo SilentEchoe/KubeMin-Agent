@@ -450,9 +450,11 @@ class Scheduler:
             return "Error: Dispatch plan is empty"
 
         # Initialize the active plan document
-        self.sessions.init_active_plan_doc(session_key, original_message, plan.tasks)
-        plan_path = self.sessions.get_active_plan_doc_path(session_key)
-        active_plan_text = plan_path.read_text(encoding="utf-8") if plan_path else ""
+        _, active_plan_text = self.sessions.init_active_plan_doc(
+            session_key,
+            original_message,
+            plan.tasks,
+        )
 
         index_map = {task.task_id: idx for idx, task in enumerate(plan.tasks)}
         remaining = {task.task_id: task for task in plan.tasks}

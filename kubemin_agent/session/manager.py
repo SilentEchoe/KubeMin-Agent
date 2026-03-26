@@ -163,8 +163,13 @@ class SessionManager:
         safe_key = session_key.replace(":", "_").replace("/", "_")
         return self.sessions_dir / f"{safe_key}.active_plan.md"
 
-    def init_active_plan_doc(self, session_key: str, original_message: str, tasks: list[Any]) -> Path:
-        """Initialize the active plan markdown document."""
+    def init_active_plan_doc(
+        self,
+        session_key: str,
+        original_message: str,
+        tasks: list[Any],
+    ) -> tuple[Path, str]:
+        """Initialize active plan markdown document and return path + in-memory snapshot."""
         path = self._active_plan_doc_path(session_key)
 
         lines = [
@@ -180,8 +185,9 @@ class SessionManager:
             desc = getattr(t, 'description', t.get('description') if isinstance(t, dict) else 'unknown')
             lines.append(f"- [ ] **{task_id}** ({agent}): {desc}")
 
-        path.write_text("\n".join(lines), encoding="utf-8")
-        return path
+        content = "\n".join(lines)
+        path.write_text(content, encoding="utf-8")
+        return path, content
 
     def update_active_plan_task_status(
         self,

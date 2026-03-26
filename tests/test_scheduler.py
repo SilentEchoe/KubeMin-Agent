@@ -312,4 +312,4 @@ async def test_scheduler_reads_active_plan_once_per_execution(
         session_key="cli:test_plan_io",
         request_id="req-plan-io",
     )
-    assert read_count == 1
+    assert read_count == 0
