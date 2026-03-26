@@ -35,9 +35,13 @@ class YAMLValidatorTool(Tool):
             "required": ["content"],
         }
 
-    async def execute(self, *, content: str) -> str:
+    async def execute(self, **kwargs: Any) -> str:
+        content = kwargs.get("content")
+        if not isinstance(content, str):
+            return "Error: content must be a string"
+
         try:
-            import yaml
+            import yaml  # type: ignore[import-untyped]
         except ImportError:
             return "Error: PyYAML is not installed. Run: pip install pyyaml"
 

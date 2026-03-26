@@ -10,7 +10,9 @@ from typing import Any
 
 from kubemin_agent.agent.tools.base import Tool
 from kubemin_agent.agent.tools.sandbox import (
+    SandboxMode,
     SandboxPolicy,
+    SandboxRuntime,
     SandboxRunner,
     SandboxUnavailableError,
 )
@@ -115,7 +117,19 @@ class ShellTool(Tool):
             "required": ["command"],
         }
 
-    async def execute(self, *, command: str, timeout: int | None = None) -> str:
+    async def execute(self, **kwargs: Any) -> str:
+        command = kwargs.get("command")
+        if not isinstance(command, str):
+            return "Error: command must be a string"
+        timeout_raw = kwargs.get("timeout")
+        timeout: int | None
+        if timeout_raw is None:
+            timeout = None
+        elif isinstance(timeout_raw, int):
+            timeout = timeout_raw
+        else:
+            return "Error: timeout must be an integer"
+
         timeout = self._default_timeout if timeout is None else min(max(timeout, 1), 120)
 
         # Safety checks
@@ -251,15 +265,15 @@ class ShellTool(Tool):
         return "/" in normalized
 
     @staticmethod
-    def _normalize_mode(mode: str) -> str:
+    def _normalize_mode(mode: str) -> SandboxMode:
         normalized = mode.strip().lower()
         if normalized in {"off", "best_effort", "strict"}:
-            return normalized
+            return normalized  # type: ignore[return-value]
         return "off"
 
     @staticmethod
-    def _normalize_runtime(runtime: str) -> str:
+    def _normalize_runtime(runtime: str) -> SandboxRuntime:
         normalized = runtime.strip().lower()
         if normalized in {"auto", "bwrap"}:
-            return normalized
+            return normalized  # type: ignore[return-value]
         return "auto"

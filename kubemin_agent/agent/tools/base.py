@@ -12,7 +12,7 @@ class Tool(ABC):
     the environment, such as reading files, executing commands, etc.
     """
 
-    _TYPE_MAP = {
+    _TYPE_MAP: dict[str, type[Any] | tuple[type[Any], ...]] = {
         "string": str,
         "integer": int,
         "number": (int, float),
@@ -61,7 +61,8 @@ class Tool(ABC):
 
     def _validate(self, val: Any, schema: dict[str, Any], path: str) -> list[str]:
         t, label = schema.get("type"), path or "parameter"
-        if t in self._TYPE_MAP and not isinstance(val, self._TYPE_MAP[t]):
+        expected_type = self._TYPE_MAP.get(t)
+        if expected_type is not None and not isinstance(val, expected_type):
             return [f"{label} should be {t}"]
 
         errors: list[str] = []

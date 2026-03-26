@@ -56,7 +56,11 @@ class ReadFileTool(Tool):
             "required": ["path"],
         }
 
-    async def execute(self, *, path: str) -> str:
+    async def execute(self, **kwargs: Any) -> str:
+        path = kwargs.get("path")
+        if not isinstance(path, str):
+            return "Error: path must be a string"
+
         resolved = self._resolve_path(path)
         if isinstance(resolved, str):
             return resolved  # error message
@@ -135,7 +139,14 @@ class WriteFileTool(Tool):
             "required": ["path", "content"],
         }
 
-    async def execute(self, *, path: str, content: str) -> str:
+    async def execute(self, **kwargs: Any) -> str:
+        path = kwargs.get("path")
+        content = kwargs.get("content")
+        if not isinstance(path, str):
+            return "Error: path must be a string"
+        if not isinstance(content, str):
+            return "Error: content must be a string"
+
         try:
             p = Path(path)
             if not p.is_absolute():
