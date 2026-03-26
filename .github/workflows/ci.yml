@@ -30,4 +30,7 @@ jobs:
         run: mypy kubemin_agent
 
       - name: Pytest (global coverage gate)
-        run: pytest --cov=kubemin_agent --cov-fail-under=80
+        run: pytest --cov=kubemin_agent --cov-fail-under=80 --cov-report=xml --cov-report=term
+
+      - name: Module Coverage Gate
+        run: python3 scripts/check_module_coverage.py coverage.xml

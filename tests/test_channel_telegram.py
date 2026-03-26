@@ -116,3 +116,86 @@ async def test_telegram_send_message(channel):
     args, kwargs = channel._client.post.call_args
     assert args[0] == "https://api.telegram.org/bottest_token/sendMessage"
     assert kwargs["json"] == {"chat_id": "67890", "text": "Reply text"}
+
+
+@pytest.mark.asyncio
+async def test_telegram_send_message_not_running(channel):
+    channel._running = False
+    channel._client = None
+    await channel.send_message("67890", "Reply text")
+
+
+@pytest.mark.asyncio
+async def test_telegram_send_message_handles_exception(channel):
+    channel._running = True
+    channel._client = AsyncMock()
+    channel._client.post.side_effect = RuntimeError("network error")
+    await channel.send_message("67890", "Reply text")
+
+
+@pytest.mark.asyncio
+async def test_telegram_poll_updates_handles_non_200(channel, monkeypatch):
+    channel._running = True
+    channel._client = AsyncMock()
+    response = MagicMock()
+    response.status_code = 500
+    channel._client.get.return_value = response
+
+    async def _stop_loop(_seconds: float) -> None:
+        channel._running = False
+
+    monkeypatch.setattr("kubemin_agent.channels.telegram.asyncio.sleep", _stop_loop)
+    await channel._poll_updates()
+    channel._client.get.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_telegram_poll_updates_handles_api_error(channel, monkeypatch):
+    channel._running = True
+    channel._client = AsyncMock()
+    response = MagicMock()
+    response.status_code = 200
+    response.json.return_value = {"ok": False, "description": "invalid"}
+    channel._client.get.return_value = response
+
+    async def _stop_loop(_seconds: float) -> None:
+        channel._running = False
+
+    monkeypatch.setattr("kubemin_agent.channels.telegram.asyncio.sleep", _stop_loop)
+    await channel._poll_updates()
+    channel._client.get.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_telegram_poll_updates_handles_exception(channel, monkeypatch):
+    channel._running = True
+    channel._client = AsyncMock()
+    channel._client.get.side_effect = RuntimeError("boom")
+
+    async def _stop_loop(_seconds: float) -> None:
+        channel._running = False
+
+    monkeypatch.setattr("kubemin_agent.channels.telegram.asyncio.sleep", _stop_loop)
+    await channel._poll_updates()
+
+
+@pytest.mark.asyncio
+async def test_telegram_process_update_ignores_missing_or_empty_message(channel):
+    channel._running = True
+    await channel._process_update({})
+    await channel._process_update({"message": {"text": ""}})
+    assert channel.bus.inbound.empty()
+
+
+@pytest.mark.asyncio
+async def test_telegram_process_update_unauthorized_by_user_id(channel):
+    channel._running = True
+    update = {
+        "message": {
+            "text": "No username",
+            "from": {"id": 666},
+            "chat": {"id": 666},
+        }
+    }
+    await channel._process_update(update)
+    assert channel.bus.inbound.empty()
