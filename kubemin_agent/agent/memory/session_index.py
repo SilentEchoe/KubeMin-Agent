@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 import sqlite3
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 
 from kubemin_agent.agent.memory.scope import MemoryScope
@@ -46,7 +46,7 @@ class SessionSearchIndex:
         if not self.enabled:
             return
         content = f"User: {user_message}\nAssistant: {assistant_response}"
-        created_at = datetime.utcnow().isoformat(timespec="seconds") + "Z"
+        created_at = datetime.now(UTC).isoformat(timespec="seconds").replace("+00:00", "Z")
         with sqlite3.connect(self.db_path) as conn:
             cur = conn.execute(
                 """

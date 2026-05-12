@@ -109,8 +109,7 @@ class BuiltinMemoryStore:
         if action == "remove":
             if not old_text:
                 raise ValueError("old_text is required for remove")
-            updated = self._replace_unique(current, old_text, "")
-            updated = "\n".join(line for line in updated.splitlines() if line.strip()).strip()
+            updated = self._remove_unique_entry(current, old_text)
             return self._write_checked(path, target, updated, limit, "memory removed")
 
         raise ValueError(f"unsupported memory action: {action}")
@@ -146,6 +145,22 @@ class BuiltinMemoryStore:
         if count > 1:
             raise ValueError("old_text matched multiple locations; provide a more specific substring")
         return current.replace(old_text, new_text, 1).strip()
+
+    @staticmethod
+    def _remove_unique_entry(current: str, old_text: str) -> str:
+        matching_indexes = [
+            index
+            for index, line in enumerate(current.splitlines())
+            if old_text in line
+        ]
+        if not matching_indexes:
+            raise ValueError("old_text was not found")
+        if len(matching_indexes) > 1:
+            raise ValueError("old_text matched multiple locations; provide a more specific substring")
+
+        lines = current.splitlines()
+        lines.pop(matching_indexes[0])
+        return "\n".join(line for line in lines if line.strip()).strip()
 
     def _write_checked(
         self,
