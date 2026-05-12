@@ -1,4 +1,4 @@
-"""Agent tools module."""
+"""Agent tool contracts."""
 
 from kubemin_agent.agent.tools.base import Tool
 from kubemin_agent.agent.tools.registry import ToolRegistry

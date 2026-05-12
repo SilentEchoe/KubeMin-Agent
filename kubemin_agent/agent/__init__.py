@@ -1,1 +1,1 @@
-"""Agent core module."""
+"""Agent runtime foundation."""

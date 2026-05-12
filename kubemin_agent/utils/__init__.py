@@ -1,5 +1,5 @@
-"""Utility functions module."""
+"""Shared utilities for KubeMin-Agent."""
 
-from kubemin_agent.utils.helpers import format_error, sanitize_session_key, truncate_output
+from kubemin_agent.utils.helpers import sanitize_identifier, sanitize_session_key, truncate_output
 
-__all__ = ["truncate_output", "sanitize_session_key", "format_error"]
+__all__ = ["sanitize_identifier", "sanitize_session_key", "truncate_output"]

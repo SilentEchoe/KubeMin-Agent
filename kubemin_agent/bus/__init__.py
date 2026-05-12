@@ -1,6 +1,5 @@
-"""Message bus module."""
+"""Message bus data contracts."""
 
 from kubemin_agent.bus.events import InboundMessage, OutboundMessage
-from kubemin_agent.bus.queue import MessageBus
 
-__all__ = ["InboundMessage", "OutboundMessage", "MessageBus"]
+__all__ = ["InboundMessage", "OutboundMessage"]

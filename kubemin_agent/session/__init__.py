@@ -1,4 +1,4 @@
-"""Session management module."""
+"""Session persistence."""
 
 from kubemin_agent.session.manager import SessionManager
 
