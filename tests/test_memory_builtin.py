@@ -35,6 +35,63 @@ def test_tenant_and_user_isolation(tmp_path: Path) -> None:
     assert store.read_user(third) == ""
 
 
+def test_team_memory_is_shared_by_team_and_agent_scoped(tmp_path: Path) -> None:
+    store = BuiltinMemoryStore(tmp_path)
+    alice_k8s = MemoryScope("tenant-a", "alice", "k8s", team_id="platform")
+    bob_k8s = MemoryScope("tenant-a", "bob", "k8s", team_id="platform")
+    alice_workflow = MemoryScope("tenant-a", "alice", "workflow", team_id="platform")
+    other_team = MemoryScope("tenant-a", "alice", "k8s", team_id="payments")
+    other_tenant = MemoryScope("tenant-b", "alice", "k8s", team_id="platform")
+
+    store.update(alice_k8s, "team", "add", content="team prefers dry-run before apply")
+    store.update(alice_k8s, "team_memory", "add", content="k8s team checks namespace budgets")
+    store.update(alice_workflow, "team_memory", "add", content="workflow team reviews DAG diffs")
+
+    assert store.read_team(bob_k8s) == "team prefers dry-run before apply"
+    assert "namespace budgets" in store.read_team_memory(bob_k8s)
+    assert "DAG diffs" in store.read_team_memory(alice_workflow)
+    assert "DAG diffs" not in store.read_team_memory(bob_k8s)
+    assert store.read_team(other_team) == ""
+    assert store.read_team(other_tenant) == ""
+
+
+def test_team_memory_requires_explicit_team_id(tmp_path: Path) -> None:
+    store = BuiltinMemoryStore(tmp_path)
+    scope = MemoryScope("tenant", "user", "agent")
+
+    with pytest.raises(ValueError, match="team_id"):
+        store.update(scope, "team", "add", content="team norm")
+
+
+def test_snapshot_injects_team_before_personal_memory(tmp_path: Path) -> None:
+    store = BuiltinMemoryStore(tmp_path)
+    scope = MemoryScope("tenant", "user", "agent", team_id="team")
+    store.update(scope, "team", "add", content="team norm")
+    store.update(scope, "team_memory", "add", content="team agent fact")
+    store.update(scope, "user", "add", content="user preference")
+    store.update(scope, "memory", "add", content="personal agent fact")
+
+    snapshot = store.build_snapshot(scope)
+
+    assert snapshot.index("## TEAM.md") < snapshot.index("## TEAM MEMORY.md")
+    assert snapshot.index("## TEAM MEMORY.md") < snapshot.index("## USER.md")
+    assert snapshot.index("## USER.md") < snapshot.index("## MEMORY.md")
+
+
+def test_private_snapshot_does_not_include_team_memory(tmp_path: Path) -> None:
+    store = BuiltinMemoryStore(tmp_path)
+    team_scope = MemoryScope("tenant", "user", "agent", team_id="team")
+    private_scope = MemoryScope("tenant", "user", "agent")
+    store.update(team_scope, "team", "add", content="team norm")
+    store.update(private_scope, "user", "add", content="user preference")
+
+    snapshot = store.build_snapshot(private_scope)
+
+    assert "team norm" not in snapshot
+    assert "## TEAM.md" not in snapshot
+    assert "user preference" in snapshot
+
+
 def test_builtin_memory_add_replace_remove_and_duplicate_idempotency(tmp_path: Path) -> None:
     store = BuiltinMemoryStore(tmp_path)
     scope = MemoryScope("tenant", "user", "agent")

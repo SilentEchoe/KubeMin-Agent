@@ -10,9 +10,10 @@ from kubemin_agent.bus.queue import MessageBus
 class BaseChannel(ABC):
     """A channel converts platform messages into internal inbound messages."""
 
-    def __init__(self, bus: MessageBus, tenant_id: str = "default") -> None:
+    def __init__(self, bus: MessageBus, tenant_id: str = "default", team_id: str = "") -> None:
         self.bus = bus
         self.tenant_id = tenant_id or "default"
+        self.team_id = team_id or ""
 
     @property
     @abstractmethod

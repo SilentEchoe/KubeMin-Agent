@@ -14,9 +14,14 @@ class MemoryConfig:
     root_dir: str = "~/.kubemin-agent"
     user_max_chars: int = 1375
     agent_memory_max_chars: int = 2200
+    team_max_chars: int = 2200
+    team_agent_memory_max_chars: int = 2600
     warning_ratio: float = 0.8
     session_search_enabled: bool = True
     session_search_top_k: int = 5
+    dream_enabled: bool = True
+    dream_turn_threshold: int = 20
+    dream_draft_top_k: int = 20
     external_provider: str = "none"
 
     def root_path(self) -> Path:

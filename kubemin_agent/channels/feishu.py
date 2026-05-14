@@ -18,8 +18,9 @@ class FeishuChannel(BaseChannel):
         allowed_users: Sequence[int | str],
         bus: MessageBus,
         tenant_id: str = "default",
+        team_id: str = "",
     ) -> None:
-        super().__init__(bus=bus, tenant_id=tenant_id)
+        super().__init__(bus=bus, tenant_id=tenant_id, team_id=team_id)
         self.allowed_users = [str(user) for user in allowed_users]
 
     @property
@@ -52,12 +53,16 @@ class FeishuChannel(BaseChannel):
         if not text:
             return
 
+        metadata = {"tenant_id": self.tenant_id}
+        if self.team_id:
+            metadata["team_id"] = self.team_id
+
         await self.bus.publish_inbound(
             InboundMessage(
                 channel=self.name,
                 chat_id=sender_id,
                 content=text,
                 sender=sender_id or "local",
-                metadata={"tenant_id": self.tenant_id},
+                metadata=metadata,
             )
         )

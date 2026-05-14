@@ -18,8 +18,9 @@ class TelegramChannel(BaseChannel):
         allowed_users: Sequence[int | str],
         bus: MessageBus,
         tenant_id: str = "default",
+        team_id: str = "",
     ) -> None:
-        super().__init__(bus=bus, tenant_id=tenant_id)
+        super().__init__(bus=bus, tenant_id=tenant_id, team_id=team_id)
         self.bot_token = bot_token
         self.allowed_users = [str(user) for user in allowed_users]
 
@@ -46,13 +47,17 @@ class TelegramChannel(BaseChannel):
         if self.allowed_users and not self._is_allowed(user_id, username):
             return
 
+        metadata = {"tenant_id": self.tenant_id, "username": username}
+        if self.team_id:
+            metadata["team_id"] = self.team_id
+
         await self.bus.publish_inbound(
             InboundMessage(
                 channel=self.name,
                 chat_id=chat_id,
                 content=text,
                 sender=user_id or username or "local",
-                metadata={"tenant_id": self.tenant_id, "username": username},
+                metadata=metadata,
             )
         )
 

@@ -9,7 +9,7 @@ from kubemin_agent.agent.tools.base import Tool
 
 
 class MemoryUpdateTool(Tool):
-    """Update scoped builtin USER.md or MEMORY.md."""
+    """Update scoped builtin USER.md, TEAM.md, or MEMORY.md."""
 
     @property
     def name(self) -> str:
@@ -17,14 +17,18 @@ class MemoryUpdateTool(Tool):
 
     @property
     def description(self) -> str:
-        return "Add, replace, or remove scoped high-signal memory for the active tenant/user/agent."
+        return (
+            "Add, replace, or remove scoped high-signal memory for the active tenant/user/team/agent. "
+            "Team targets are only for stable team preferences, norms, project conventions, or "
+            "cross-member agent expertise."
+        )
 
     @property
     def parameters(self) -> dict[str, Any]:
         return {
             "type": "object",
             "properties": {
-                "target": {"type": "string", "enum": ["user", "memory"]},
+                "target": {"type": "string", "enum": ["user", "memory", "team", "team_memory"]},
                 "action": {"type": "string", "enum": ["add", "replace", "remove"]},
                 "content": {"type": "string"},
                 "old_text": {"type": "string"},
@@ -63,7 +67,7 @@ class SessionSearchTool(Tool):
 
     @property
     def description(self) -> str:
-        return "Search prior turns for the active tenant/user scope using SQLite FTS5."
+        return "Search prior turns for the active personal or team scope using SQLite FTS5."
 
     @property
     def parameters(self) -> dict[str, Any]:
@@ -71,6 +75,7 @@ class SessionSearchTool(Tool):
             "type": "object",
             "properties": {
                 "query": {"type": "string", "minLength": 1},
+                "scope": {"type": "string", "enum": ["auto", "personal", "team"]},
                 "top_k": {"type": "integer"},
                 "agent_name": {"type": "string"},
                 "session_key": {"type": "string"},
@@ -82,16 +87,18 @@ class SessionSearchTool(Tool):
     async def execute(
         self,
         query: str,
+        scope: str = "auto",
         top_k: int = 5,
         agent_name: str = "",
         session_key: str = "",
         request_id: str = "",
     ) -> str:
-        manager, scope = get_active_memory()
+        manager, active_scope = get_active_memory()
         results = manager.search_sessions(
-            scope=scope,
+            scope=active_scope,
             query=query,
             top_k=top_k,
+            scope_mode=scope,
             agent_name=agent_name or None,
             session_key=session_key or None,
             request_id=request_id or None,

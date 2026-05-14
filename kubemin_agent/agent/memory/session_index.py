@@ -22,6 +22,20 @@ class SessionSearchResult:
     snippet: str
 
 
+@dataclass(frozen=True)
+class SessionTurn:
+    """One persisted turn used by scoped dream consolidation."""
+
+    session_key: str
+    request_id: str
+    agent_name: str
+    user_id: str
+    team_id: str
+    created_at: str
+    user_message: str
+    assistant_response: str
+
+
 class SessionSearchIndex:
     """Large-capacity session recall using SQLite FTS5."""
 
@@ -51,13 +65,14 @@ class SessionSearchIndex:
             cur = conn.execute(
                 """
                 INSERT INTO session_turns (
-                    tenant_id, user_id, agent_name, session_key, request_id,
+                    tenant_id, user_id, team_id, agent_name, session_key, request_id,
                     created_at, user_message, assistant_response
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     scope.tenant_id,
                     scope.user_id,
+                    scope.team_id,
                     scope.agent_name,
                     session_key,
                     request_id,
@@ -74,11 +89,12 @@ class SessionSearchIndex:
         scope: MemoryScope,
         query: str,
         top_k: int = 5,
+        scope_mode: str = "auto",
         agent_name: str | None = None,
         session_key: str | None = None,
         request_id: str | None = None,
     ) -> list[SessionSearchResult]:
-        """Search prior turns for this tenant and user."""
+        """Search prior turns for the requested personal or team scope."""
         if not self.enabled or not query.strip() or top_k <= 0:
             return []
 
@@ -86,8 +102,7 @@ class SessionSearchIndex:
         if not match_query:
             return []
 
-        where = ["t.tenant_id = ?", "t.user_id = ?"]
-        params: list[str | int] = [scope.tenant_id, scope.user_id]
+        where, params = self._scope_where(scope, scope_mode)
         if agent_name:
             where.append("t.agent_name = ?")
             params.append(agent_name)
@@ -127,6 +142,59 @@ class SessionSearchIndex:
             for row in rows
         ]
 
+    def recent_turns(
+        self,
+        scope: MemoryScope,
+        top_k: int = 20,
+        scope_mode: str = "auto",
+    ) -> list[SessionTurn]:
+        """Return recent scoped turns for dream consolidation."""
+        if not self.enabled or top_k <= 0:
+            return []
+
+        where, params = self._scope_where(scope, scope_mode)
+        params.append(top_k)
+        sql = f"""
+            SELECT
+                session_key,
+                request_id,
+                agent_name,
+                user_id,
+                team_id,
+                created_at,
+                user_message,
+                assistant_response
+            FROM session_turns t
+            WHERE {' AND '.join(where)}
+            ORDER BY t.id DESC
+            LIMIT ?
+        """
+        with sqlite3.connect(self.db_path) as conn:
+            rows = conn.execute(sql, params).fetchall()
+        return [
+            SessionTurn(
+                session_key=row[0],
+                request_id=row[1],
+                agent_name=row[2],
+                user_id=row[3],
+                team_id=row[4],
+                created_at=row[5],
+                user_message=row[6],
+                assistant_response=row[7],
+            )
+            for row in rows
+        ]
+
+    def count_turns(self, scope: MemoryScope, scope_mode: str = "auto") -> int:
+        """Count scoped turns for dream threshold checks."""
+        if not self.enabled:
+            return 0
+        where, params = self._scope_where(scope, scope_mode)
+        sql = f"SELECT COUNT(*) FROM session_turns t WHERE {' AND '.join(where)}"
+        with sqlite3.connect(self.db_path) as conn:
+            row = conn.execute(sql, params).fetchone()
+        return int(row[0])
+
     def _initialize(self) -> None:
         with sqlite3.connect(self.db_path) as conn:
             try:
@@ -140,6 +208,7 @@ class SessionSearchIndex:
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     tenant_id TEXT NOT NULL,
                     user_id TEXT NOT NULL,
+                    team_id TEXT NOT NULL DEFAULT '',
                     agent_name TEXT NOT NULL,
                     session_key TEXT NOT NULL,
                     request_id TEXT NOT NULL DEFAULT '',
@@ -147,9 +216,17 @@ class SessionSearchIndex:
                     user_message TEXT NOT NULL,
                     assistant_response TEXT NOT NULL
                 );
-                CREATE INDEX IF NOT EXISTS idx_session_turns_scope
-                  ON session_turns(tenant_id, user_id, agent_name, session_key, request_id);
                 CREATE VIRTUAL TABLE IF NOT EXISTS session_fts USING fts5(content);
+                """
+            )
+            columns = {row[1] for row in conn.execute("PRAGMA table_info(session_turns)").fetchall()}
+            if "team_id" not in columns:
+                conn.execute("ALTER TABLE session_turns ADD COLUMN team_id TEXT NOT NULL DEFAULT ''")
+            conn.execute("DROP INDEX IF EXISTS idx_session_turns_scope")
+            conn.execute(
+                """
+                CREATE INDEX idx_session_turns_scope
+                  ON session_turns(tenant_id, user_id, team_id, agent_name, session_key, request_id)
                 """
             )
 
@@ -158,3 +235,21 @@ class SessionSearchIndex:
         tokens = re.findall(r"[\w\u4e00-\u9fff]+", query.lower())
         tokens = [token for token in tokens if token]
         return " OR ".join(tokens[:12])
+
+    @staticmethod
+    def _scope_where(scope: MemoryScope, scope_mode: str) -> tuple[list[str], list[str | int]]:
+        mode = scope_mode or "auto"
+        if mode == "auto":
+            mode = "team" if scope.has_team else "personal"
+
+        if mode == "personal":
+            return ["t.tenant_id = ?", "t.user_id = ?", "t.team_id = ''"], [
+                scope.tenant_id,
+                scope.user_id,
+            ]
+        if mode == "team":
+            if not scope.has_team:
+                raise ValueError("team_id is required for team session search")
+            return ["t.tenant_id = ?", "t.team_id = ?"], [scope.tenant_id, scope.team_id]
+
+        raise ValueError("scope_mode must be one of: auto, personal, team")

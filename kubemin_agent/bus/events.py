@@ -27,6 +27,11 @@ class InboundMessage:
         """Canonical tenant identifier for memory isolation."""
         return str(self.metadata.get("tenant_id") or "default")
 
+    @property
+    def team_id(self) -> str:
+        """Explicit team identifier for team memory isolation."""
+        return str(self.metadata.get("team_id") or "")
+
 
 @dataclass
 class OutboundMessage:
